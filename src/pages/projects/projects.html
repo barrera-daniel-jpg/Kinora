@@ -1,0 +1,84 @@
+<div>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h2>Gestión de Rutinas</h2>
+    <button id="btn-show-create" class="btn">+ Nueva Rutina</button>
+  </div>
+
+  <div id="form-container" class="card" style="display: none;">
+    <h3 id="form-title">Crear Rutina</h3>
+    <form id="project-form">
+      <input type="hidden" id="project-id">
+
+      <div class="form-group">
+        <label>Nombre de la rutina</label>
+        <input type="text" id="routine-name" required>
+      </div>
+
+      <div class="form-group">
+        <label>Descripción / objetivo</label>
+        <textarea id="routine-objective" placeholder="Objetivo de la rutina"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Frecuencia semanal (días, 1 a 7)</label>
+        <input type="number" id="routine-frequency" min="1" max="7" value="3" required>
+      </div>
+
+      <div class="form-group">
+        <label>Atletas asignados (mantén Ctrl/Cmd para elegir varios)</label>
+        <select id="routine-athlete" multiple size="4"></select>
+      </div>
+
+      <div class="card" style="margin-top: 1rem; margin-bottom: 1rem;">
+        <h4 style="margin-bottom: 0.8rem;">Agregar ejercicios</h4>
+
+        <div class="form-group">
+          <label>Ejercicio</label>
+          <select id="exercise-select">
+            <!-- Se llena dinámicamente desde el catálogo de Ejercicios -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Series</label>
+          <input type="number" id="exercise-sets" min="1" value="3">
+        </div>
+
+        <div class="form-group">
+          <label>Repeticiones</label>
+          <input type="number" id="exercise-reps" min="1" value="10">
+        </div>
+
+        <div class="form-group">
+          <label>Descanso (segundos)</label>
+          <input type="number" id="exercise-rest" min="0" value="60">
+        </div>
+
+        <!-- Prescripción opcional por ejercicio (columnas nuevas en routine_exercises). -->
+        <div class="form-group">
+          <label>Peso objetivo (kg) <small>— opcional</small></label>
+          <input type="number" id="exercise-weight" min="0" step="0.5" placeholder="Ej. 40">
+        </div>
+
+        <div class="form-group">
+          <label>RPE objetivo (0 a 10) <small>— opcional</small></label>
+          <input type="number" id="exercise-rpe" min="0" max="10" step="0.5" placeholder="Ej. 8">
+        </div>
+
+        <div class="form-group">
+          <label>Comentario <small>— opcional</small></label>
+          <input type="text" id="exercise-notes" placeholder="Ej. bajar lento, cuidar la espalda">
+        </div>
+
+        <button type="button" id="btn-add-exercise" class="btn">Agregar ejercicio</button>
+      </div>
+
+      <div id="exercise-list" style="margin-bottom: 1rem;"></div>
+
+      <button type="submit" class="btn">Guardar rutina</button>
+      <button type="button" id="btn-cancel" class="btn btn-danger">Cancelar</button>
+    </form>
+  </div>
+
+  <div class="project-grid" id="projects-list"></div>
+</div>

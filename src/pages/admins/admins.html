@@ -1,0 +1,43 @@
+<!--
+  Vista de Admins (solo para el rol superadmin).
+  Un admin no tiene perfil: es un usuario (users) con role='admin'.
+  Se inyecta como fragmento dentro de <div id="app"> desde el router.
+-->
+<div class="athletes-page">
+  <div class="athletes-inner">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+      <h2>Gestión de Admins</h2>
+      <button id="btn-show-create-admin" class="btn">+ Nuevo Admin</button>
+    </div>
+
+    <div id="admin-form-container" class="card" style="display: none;">
+      <h3 id="admin-form-title">Crear Admin</h3>
+
+      <form id="admin-form">
+        <input type="hidden" id="admin-id">
+
+        <h4 style="margin: 0.5rem 0 0.8rem;">Datos de usuario (credenciales de acceso)</h4>
+
+        <div class="form-group">
+          <label>Nombre de usuario</label>
+          <input type="text" id="admin-username" placeholder="Ej. admin.soporte" required>
+        </div>
+
+        <div class="form-group">
+          <label>Correo electrónico</label>
+          <input type="email" id="admin-email" placeholder="admin@correo.com">
+        </div>
+
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="admin-password" placeholder="Mínimo 6 caracteres" minlength="6" required>
+        </div>
+
+        <button type="submit" class="btn">Guardar admin</button>
+        <button type="button" id="btn-cancel-admin" class="btn btn-danger">Cancelar</button>
+      </form>
+    </div>
+
+    <div class="project-grid" id="admins-list"></div>
+  </div>
+</div>

@@ -1,0 +1,37 @@
+<div class="auth-page">
+  <div class="auth-panel">
+    <a href="#" id="auth-back" class="auth-back">← Volver al inicio</a>
+
+    <div class="auth-form-wrap">
+      <div class="auth-logo">
+        <span class="auth-logo-mark">◆</span>
+        <span>KINORA</span>
+      </div>
+
+      <h2>Iniciar Sesión</h2>
+      <p class="auth-subtitle">Entra a tu cuenta para ver tus rutinas y progreso.</p>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label>Usuario</label>
+          <input type="text" id="username" required placeholder="Ej. coach">
+        </div>
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="password" required placeholder="Tu contraseña">
+        </div>
+        <p id="login-error" style="color: var(--l-danger); display: none;"></p>
+        <button type="submit" class="btn btn-lg" style="width: 100%;">Ingresar</button>
+      </form>
+
+      <p class="auth-footnote">¿Aún no tienes acceso? <a href="#" id="auth-request">Solicítalo aquí</a></p>
+    </div>
+  </div>
+
+  <div class="auth-visual">
+    <img src="/src/images/login-image.jpg" alt="Atleta entrenando con Kinora" />
+    <div class="auth-visual-overlay">
+      <span class="auth-quote">"Disciplina. Progreso. Comunidad."</span>
+    </div>
+  </div>
+</div>

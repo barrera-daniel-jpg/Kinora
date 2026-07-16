@@ -1,0 +1,95 @@
+<!--
+  Vista de Ejercicios.
+  Se inyecta como fragmento dentro de <div id="app"> desde el router,
+  por eso NO lleva <html>, <head> ni <body>.
+  Hereda el tema oscuro + acento lima global (:root).
+-->
+<div class="exercises-page">
+  <!-- .exercises-inner centra el contenido a un ancho máximo legible -->
+  <div class="exercises-inner">
+
+    <!-- Encabezado: título + botón para mostrar el formulario de creación -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+      <h2>Catálogo de Ejercicios</h2>
+      <button id="btn-show-create-exercise" class="btn">+ Nuevo Ejercicio</button>
+    </div>
+
+    <!-- Contenedor del formulario. Oculto por defecto; se muestra al pulsar "Nuevo Ejercicio" -->
+    <div id="exercise-form-container" class="card" style="display: none;">
+      <h3 id="exercise-form-title">Crear Ejercicio</h3>
+
+      <form id="exercise-form">
+        <!-- Campo oculto: guarda el id cuando estamos EDITANDO un ejercicio existente.
+             Si está vacío, el submit crea uno nuevo (POST). -->
+        <input type="hidden" id="exercise-id">
+
+        <!-- Nombre del ejercicio -->
+        <div class="form-group">
+          <label>Nombre del ejercicio</label>
+          <input type="text" id="exercise-name" placeholder="Ej. Press de banca" required>
+        </div>
+
+        <!-- Categoría / grupo muscular que trabaja el ejercicio.
+             IMPORTANTE: los value van en minúscula para coincidir con el catálogo
+             semilla (pecho, espalda, piernas...) y NO generar duplicados como
+             "Pecho" vs "pecho". La etiqueta visible sí va capitalizada. -->
+        <div class="form-group">
+          <label>Categoría (grupo muscular)</label>
+          <select id="exercise-category" required>
+            <option value="">Selecciona una categoría</option>
+            <option value="pecho">Pecho</option>
+            <option value="espalda">Espalda</option>
+            <option value="piernas">Piernas</option>
+            <option value="glúteo">Glúteo</option>
+            <option value="hombros">Hombros</option>
+            <option value="brazos">Brazos</option>
+            <option value="core">Core / Abdomen</option>
+            <option value="cardio">Cardio</option>
+          </select>
+        </div>
+
+        <!-- Equipo / material con el que se realiza. Mismos value en minúscula para
+             alinear con la semilla (barra, mancuernas, máquina...) y evitar duplicados. -->
+        <div class="form-group">
+          <label>Equipo / material</label>
+          <select id="exercise-equipment" required>
+            <option value="">Selecciona el equipo</option>
+            <option value="máquina">Máquina</option>
+            <option value="mancuernas">Mancuernas</option>
+            <option value="barra">Barra</option>
+            <option value="barra fija">Barra fija</option>
+            <option value="polea">Polea</option>
+            <option value="cuerda">Cuerda</option>
+            <option value="kettlebell">Kettlebell</option>
+            <option value="banda elástica">Banda elástica</option>
+            <option value="peso corporal">Peso corporal</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
+        <!-- Nivel de dificultad sugerido -->
+        <div class="form-group">
+          <label>Dificultad</label>
+          <select id="exercise-difficulty">
+            <option value="principiante">Principiante</option>
+            <option value="intermedio">Intermedio</option>
+            <option value="avanzado">Avanzado</option>
+          </select>
+        </div>
+
+        <!-- Descripción / instrucciones de ejecución -->
+        <div class="form-group">
+          <label>Descripción / instrucciones</label>
+          <textarea id="exercise-description" placeholder="Explica cómo se ejecuta el ejercicio"></textarea>
+        </div>
+
+        <!-- Botones de acción del formulario -->
+        <button type="submit" class="btn">Guardar ejercicio</button>
+        <button type="button" id="btn-cancel-exercise" class="btn btn-danger">Cancelar</button>
+      </form>
+    </div>
+
+    <!-- Aquí se renderiza dinámicamente la lista/tarjetas de ejercicios -->
+    <div class="project-grid" id="exercises-list"></div>
+  </div>
+</div>

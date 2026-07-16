@@ -1,0 +1,102 @@
+<!--
+  Vista de Atletas.
+  Se inyecta como fragmento dentro de <div id="app"> desde el router,
+  por eso NO lleva <html>, <head> ni <body> (igual que projects.html).
+-->
+<!-- .athletes-page aplica el tema oscuro + acento lima (misma paleta y
+     tipografía Inter que el login y la landing). -->
+<div class="athletes-page">
+  <!-- .athletes-inner centra el contenido a un ancho máximo legible -->
+  <div class="athletes-inner">
+    <!-- Encabezado: título + botón para mostrar el formulario de creación -->
+    <div style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+      ">
+      <h2>Gestión de Atletas</h2>
+      <button id="btn-show-create-athlete" class="btn">+ Nuevo Atleta</button>
+    </div>
+
+    <!-- Contenedor del formulario. Oculto por defecto; se muestra al pulsar "Nuevo Atleta" -->
+    <div id="athlete-form-container" class="card" style="display: none">
+      <h3 id="athlete-form-title">Crear Atleta</h3>
+
+      <form id="athlete-form">
+        <!-- Campo oculto: guarda el id cuando estamos EDITANDO un atleta existente.
+           Si está vacío, el submit crea uno nuevo (POST). -->
+        <input type="hidden" id="athlete-id" />
+
+        <!-- ============================================================
+           DATOS BÁSICOS del atleta (tabla athletes)
+           ============================================================ -->
+        <h4 style="margin: 0.5rem 0 0.8rem">Datos básicos</h4>
+
+        <div class="form-group">
+          <label>Nombre completo</label>
+          <input type="text" id="athlete-name" placeholder="Ej. Camila Pérez" required />
+        </div>
+
+        <div class="form-group">
+          <label>Número de documento</label>
+          <input type="text" id="athlete-document" placeholder="Ej. 1001001001" required />
+        </div>
+
+        <div class="form-group">
+          <label>Fecha de nacimiento</label>
+          <input type="date" id="athlete-birthdate" required />
+        </div>
+
+        <!-- Selector de coach: solo visible para el admin (un coach asigna sus
+           propios atletas automáticamente). -->
+        <div class="form-group" id="athlete-coach-group" style="display: none">
+          <label>Coach asignado</label>
+          <select id="athlete-coach">
+            <option value="">Sin coach</option>
+          </select>
+        </div>
+
+        <!-- ============================================================
+           DATOS DE USUARIO (credenciales de inicio de sesión).
+           El usuario y la contraseña solo se piden al CREAR.
+           ============================================================ -->
+        <h4 style="margin: 1.2rem 0 0.8rem">Datos de usuario</h4>
+
+        <div class="form-group" id="athlete-user-group">
+          <label>Nombre de usuario</label>
+          <input type="text" id="athlete-username" placeholder="Ej. camila" required />
+        </div>
+
+        <div class="form-group">
+          <label>Correo electrónico</label>
+          <input type="email" id="athlete-email" placeholder="atleta@correo.com" />
+        </div>
+
+        <div class="form-group" id="athlete-password-group">
+          <label>Contraseña</label>
+          <input type="password" id="athlete-password" placeholder="Mínimo 6 caracteres" minlength="6" />
+        </div>
+
+        <!-- Botones de acción del formulario -->
+        <button type="submit" class="btn">Guardar atleta</button>
+        <button type="button" id="btn-cancel-athlete" class="btn btn-danger">
+          Cancelar
+        </button>
+      </form>
+    </div>
+
+    <!-- Panel para asignar/quitar rutinas a un atleta SIN abrir la rutina.
+         Oculto por defecto; se muestra al pulsar "Asignar rutinas" en una tarjeta. -->
+    <div id="assign-routines-container" class="card" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 id="assign-routines-title">Rutinas del atleta</h3>
+        <button type="button" id="btn-close-assign" class="btn btn-danger">Cerrar</button>
+      </div>
+      <div id="assign-routines-list"></div>
+    </div>
+
+    <!-- Aquí se renderiza dinámicamente la lista/tarjetas de atletas -->
+    <div class="project-grid" id="athletes-list"></div>
+  </div>
+</div>
