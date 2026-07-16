@@ -16,7 +16,7 @@ function openForm(url) {
 export function initLanding() {
     // Botones que llevan al login: el de la barra ("Iniciar Sesión") y los del hero
     // ("Soy Coach" / "Soy Atleta").
-    const loginButtonIds = ['nav-login', 'cta-coach', 'cta-atleta'];
+    const loginButtonIds = ['nav-login', 'cta-coach', 'cta-atleta', 'phone-btn'];
     loginButtonIds.forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('click', () => navigateTo('/login'));
