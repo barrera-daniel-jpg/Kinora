@@ -1,4 +1,4 @@
-# 🏋️ Kinora — Gestión de Rutinas de Entrenamiento
+# Kinora — Gestión de Rutinas de Entrenamiento
 
 Aplicación web de página única (**SPA**) para gestionar rutinas de entrenamiento en una
 jerarquía **superadmin → admin → coach → atleta**. El coach crea ejercicios y rutinas y
@@ -41,13 +41,13 @@ Por qué cada una: ver [`DOCUMENTACION.md` §2](./DOCUMENTACION.md#2-tecnología
 
 ---
 
-## 📋 Requisitos previos
+## Requisitos previos
 
 - **Node.js** 18 o superior · **npm** · **Docker** (para la base de datos).
 
 ---
 
-## ▶️ Puesta en marcha
+## Puesta en marcha
 
 Necesitas **tres cosas corriendo a la vez**.
 
