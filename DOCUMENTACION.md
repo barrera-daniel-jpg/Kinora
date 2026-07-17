@@ -136,8 +136,8 @@ npm start            # levanta la API en http://localhost:3001
 Al arrancar, la consola debe mostrar:
 
 ```
-✅ API de Kinora escuchando en http://localhost:3001
-✅ Conectado a la base de datos "kinora" (esquema base_v1)
+>> API de Kinora escuchando en http://localhost:3001
+>> Conectado a la base de datos "kinora" (esquema base_v1)
 ```
 
 Para probar solo la conexión a la BD sin levantar el servidor: `node test-db.js`.
