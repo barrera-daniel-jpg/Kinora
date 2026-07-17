@@ -368,3 +368,123 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+/**
+ * assertOwnsRoutine(user, routineId)
+ * Devuelve la rutina si el usuario la puede gestionar; si no, lanza.
+ * Asignar una rutina es una forma de modificarla, así que exige ser su dueño.
+ */
+async function assertOwnsRoutine(user, routineId) {
+  const result = await pool.query(SELECT * FROM routines WHERE id = $1, [routineId]);
+  if (!result.rows.length) throw Object.assign(new Error("Rutina no encontrada."), { status: 404 });
+  if (!canModify(user, result.rows[0])) {
+    throw Object.assign(new Error("Solo puedes asignar las rutinas que creaste tú."), { status: 403 });
+  }
+  return result.rows[0];
+}
+
+/**
+ * POST /api/routines/:id/assignments   body { athlete_id }
+ * Asigna la rutina a un atleta. Es idempotente: si la asignación ya existía pero
+ * estaba desactivada, la reactiva en vez de fallar por clave duplicada.
+ */
+router.post("/:id/assignments", async (req, res) => {
+  const { athlete_id } = req.body;
+  if (!athlete_id) return res.status(400).json({ error: "athlete_id es obligatorio." });
+
+  const client = await pool.connect();
+  try {
+    await assertOwnsRoutine(req.user, req.params.id);
+    await assertAthletesInScope(client, req.user, [athlete_id]);
+
+    await client.query(
+      `INSERT INTO routine_assignments (routine_id, athlete_id, is_active)
+       VALUES ($1, $2, true)
+       ON CONFLICT (routine_id, athlete_id) DO UPDATE SET is_active = true`,
+      [req.params.id, athlete_id]
+    );
+    res.status(201).json({ routine_id: Number(req.params.id), athlete_id: Number(athlete_id) });
+  } catch (error) {
+    if (error.code === "23503") return res.status(400).json({ error: "La rutina o el atleta no existe." });
+    res.status(error.status || 500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * DELETE /api/routines/:id/assignments/:athleteId
+ * Quita la asignación de una rutina a un atleta.
+ */
+router.delete("/:id/assignments/:athleteId", async (req, res) => {
+  try {
+    await assertOwnsRoutine(req.user, req.params.id);
+
+    const result = await pool.query(
+      DELETE FROM routine_assignments WHERE routine_id = $1 AND athlete_id = $2 RETURNING id,
+      [req.params.id, req.params.athleteId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: "Esa asignación no existe." });
+    res.json({ deleted: result.rows[0].id });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/routines/:id/assignments/:athleteId/status   body { status }
+ * Cambia el estado de la rutina PARA ESE ATLETA (pendiente / en progreso /
+ * completada / cancelada).
+ *
+ * Es la única escritura que un atleta puede hacer, y solo sobre SU propia
+ * asignación: la comparación con req.user.athlete_id impide que marque como
+ * completada la rutina de otro. Al coach dueño también se le permite, para poder
+ * corregir el estado o cancelar una rutina.
+ */
+router.patch("/:id/assignments/:athleteId/status", async (req, res) => {
+  const { status } = req.body;
+  const athleteId = Number(req.params.athleteId);
+
+  if (!VALID_STATUSES.includes(status)) {
+    return res.status(400).json({ error: Estado inválido. Usa uno de: ${VALID_STATUSES.join(", ")}. });
+  }
+
+  try {
+    // Un atleta solo puede tocar su propia fila; los demás roles, solo si son
+    // dueños de la rutina.
+    if (req.user.role === "athlete") {
+      if (athleteId !== req.user.athlete_id) {
+        return res.status(403).json({ error: "Solo puedes cambiar el estado de tus propias rutinas." });
+      }
+    } else {
+      await assertOwnsRoutine(req.user, req.params.id);
+    }
+
+    const result = await pool.query(
+      `UPDATE routine_assignments SET status = $1
+        WHERE routine_id = $2 AND athlete_id = $3
+        RETURNING id, status`,
+      [status, req.params.id, athleteId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: "Esa asignación no existe." });
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// Traduce códigos de error de Postgres a status HTTP legibles.
+function mapError(error) {
+  if (error.code === "23503") return 400; // FK inexistente (ejercicio/atleta no existe)
+  if (error.code === "23505") return 409; // duplicado (mismo nombre de rutina, mismo atleta)
+  if (error.code === "23514") return 400; // check (reps/sets/frecuencia fuera de rango)
+  return 500;
+}
+function describeError(error) {
+  if (error.code === "23503") return "Un ejercicio o atleta referenciado no existe.";
+  if (error.code === "23505") return "Ya tienes una rutina con ese nombre, o hay un atleta repetido.";
+  if (error.code === "23514") return "Valores fuera de rango (revisa series, repeticiones o frecuencia 1-7).";
+  return error.message;
+}
+
+export default router;
