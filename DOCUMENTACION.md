@@ -93,14 +93,18 @@ superior menor" (rango semver).
 | `express` | `^4.19.2` | `backend/package.json` | dependencia |
 | `pg` | `^8.12.0` | `backend/package.json` | dependencia |
 | `bcryptjs` | `^2.4.3` | `backend/package.json` | dependencia |
+| `jsonwebtoken` | `^9.0.3` | `backend/package.json` | dependencia |
 | `dotenv` | `^16.4.5` | `backend/package.json` | dependencia |
 | `cors` | `^2.8.5` | `backend/package.json` | dependencia |
 | `vite` | `^8.0.16` | `package.json` (raíz) | devDependency |
 
+> **Son dos paquetes distintos.** Todo lo del backend vive en `backend/package.json` y se
+> instala en `backend/node_modules`; la raíz solo tiene Vite. Por eso hay que ejecutar
+> `npm install` **en los dos sitios** (ver [§3.3](#33-backend-express--postgresql)). Cuidado con instalar una
+> dependencia del backend en la raíz: se duplica y las dos copias se desincronizan.
+
 > El frontend **no** tiene dependencias de ejecución: usa solo APIs nativas del navegador
 > (Fetch, localStorage, ES Modules). `vite` es únicamente herramienta de desarrollo/build.
-> **No hay ninguna librería de JWT** (`jsonwebtoken` u otra): la autenticación por token
-> no está implementada (ver [§14](#14-limitaciones-conocidas-y-pendientes-todo)).
 
 > **Nota sobre "solo local"**: el driver `pg` y `cors` soportarían despliegue en la nube
 > (SSL, orígenes remotos), pero como el equipo decidió no desplegar, esas ramas se
@@ -123,14 +127,57 @@ docker ps | grep kinora_local
 
 Si no está corriendo: `docker start kinora_local`.
 
-### 3.2. Backend (Express + PostgreSQL)
+### 3.2. Configuración (`backend/.env`)
+
+El backend no arranca sin este archivo. **No se sube al repositorio** (está en
+`.gitignore`), así que en una máquina nueva hay que crearlo:
+
+```bash
+API_PORT=3001
+
+DB_HOST=localhost
+POSTGRES_PORT=5433
+DB_NAME=kinora
+DB_SCHEMA=base_v1
+POSTGRES_USER=Kinora
+POSTGRES_PASSWORD=<la contraseña del contenedor>
+
+# Orígenes autorizados a llamar a la API desde el navegador.
+# Admite varios separados por comas: Vite cambia de puerto solo si el 5173 está ocupado.
+CORS_ORIGIN=http://localhost:5173,http://localhost:5174
+
+# Secreto con el que se firman los tokens de sesión. OBLIGATORIO.
+# Genera uno propio con:
+#   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+JWT_SECRET=<cadena larga y aleatoria>
+```
+
+Sobre `JWT_SECRET`: si falta, el servidor **aborta al arrancar** con un mensaje que
+explica cómo generarlo. Es deliberado — un secreto por defecto o vacío permitiría a
+cualquiera firmar tokens falsos y hacerse pasar por superadmin, y el fallo pasaría
+inadvertido. Al cambiarlo, todas las sesiones abiertas dejan de valer.
+
+### 3.3. Backend (Express + PostgreSQL)
+
+**Dos paquetes, dos `package.json`.** El backend tiene sus propias dependencias en
+`backend/package.json` y su propio `backend/node_modules`; la raíz solo tiene Vite. Es
+la razón de que haya que instalar en los dos sitios.
+
+Desde la **raíz** del proyecto:
+
+```bash
+npm install                    # dependencias del frontend
+npm install --prefix backend   # dependencias del backend
+npm run api                    # levanta la API en http://localhost:3001
+npm run seed                   # (opcional) usuarios y ejercicios de prueba — ver §10
+```
+
+También se puede trabajar desde dentro de `backend/`:
 
 ```bash
 cd backend
-npm install          # solo la primera vez
-npm run seed         # (opcional) carga usuarios y ejercicios de prueba — ver §10
-npm start            # levanta la API en http://localhost:3001
-#   o: npm run dev   # igual, pero se reinicia al guardar (node --watch)
+npm start            # igual que "npm run api" desde la raíz
+npm run dev          # igual, pero se reinicia al guardar (node --watch)
 ```
 
 Al arrancar, la consola debe mostrar:
@@ -140,24 +187,39 @@ Al arrancar, la consola debe mostrar:
 >> Conectado a la base de datos "kinora" (esquema base_v1)
 ```
 
-Para probar solo la conexión a la BD sin levantar el servidor: `node test-db.js`.
+Para probar solo la conexión a la BD sin levantar el servidor: `node backend/test-db.js`.
 
-### 3.3. Frontend (Vite)
+### 3.4. Migraciones
 
-Desde la **raíz** del proyecto (no dentro de `backend/`):
+Cada cambio de esquema es un `.sql` en `backend/migrations/`, y **todos son
+idempotentes**: se pueden correr las veces que haga falta sin romper nada, así que ante
+la duda, córrelos.
 
 ```bash
-npm install          # solo la primera vez
+docker exec -i kinora_local psql -U Kinora -d kinora < backend/migrations/<archivo>.sql
+```
+
+### 3.5. Frontend (Vite)
+
+Desde la **raíz** del proyecto:
+
+```bash
 npm run dev          # levanta Vite, normalmente en http://localhost:5173
 ```
 
-Abre la URL que imprime Vite e inicia sesión (credenciales en [§10](#credenciales-de-prueba-tras-npm-run-seed)).
+Abre la URL que imprime Vite e inicia sesión (credenciales en [§10](#credenciales)).
+
+> Si Vite avisa de que el 5173 está ocupado y salta al 5174, comprueba que ese puerto
+> esté en `CORS_ORIGIN`. Si no, la página carga pero **todas** las llamadas fallan con un
+> error de CORS que no menciona el puerto por ningún lado.
 
 ### Scripts disponibles
 
 | Ubicación | Script | Qué hace |
 |-----------|--------|----------|
 | raíz | `npm run dev` | Servidor de desarrollo de Vite (frontend). |
+| raíz | `npm run api` | Levanta la API (`node backend/server.js`). |
+| raíz | `npm run seed` | Carga datos de prueba en la BD. |
 | raíz | `npm run build` | Build de producción del frontend en `dist/`. |
 | raíz | `npm run preview` | Sirve localmente la build de `dist/`. |
 | `backend/` | `npm start` | Levanta la API (`node server.js`). |
@@ -170,28 +232,32 @@ Abre la URL que imprime Vite e inicia sesión (credenciales en [§10](#credencia
 
 ```
 Kinora-Project/
-├── backend/                     # API REST (Express)
+├── backend/                     # API REST (Express) — paquete propio (package.json aparte)
+│   ├── load-env.js              # Carga el .env sin depender del directorio de ejecución
 │   ├── server.js                # Punto de entrada: CORS, JSON y montaje de rutas
 │   ├── db.js                    # Pool de conexión a PostgreSQL (lee .env)
-│   ├── .env                     # Credenciales y config (NO se sube a git)
+│   ├── .env                     # Credenciales, CORS y JWT_SECRET (NO se sube a git)
+│   ├── package.json             # Dependencias del backend (express, pg, bcryptjs, jwt…)
 │   ├── seed.js                  # Carga datos de prueba (superadmin/admin/coach/atleta + ejercicios)
 │   ├── create-superadmin.js     # Crea/promueve SOLO el superadmin
 │   ├── rehash.js                # Utilidad: pasa a bcrypt hashes que estén en texto plano
 │   ├── test-db.js               # Utilidad: prueba la conexión a la BD
 │   ├── migrations/              # Cambios de esquema versionados (.sql idempotentes)
+│   ├── middleware/
+│   │   └── auth.js              # JWT + permisos: requireAuth, requireRole, canModify
 │   └── routes/                  # Un archivo por recurso de la API
-│       ├── auth.js              #   POST /login y /register
-│       ├── exercises.js         #   CRUD de ejercicios
+│       ├── auth.js              #   POST /login, /register, /change-password
+│       ├── exercises.js         #   CRUD de ejercicios (+ /filters para la cascada)
 │       ├── coaches.js           #   CRUD de coaches (usuario + perfil; dueño = admin_id)
 │       ├── athletes.js          #   CRUD de atletas (usuario + perfil)
 │       ├── admins.js            #   CRUD de admins (solo superadmin)
-│       └── routines.js          #   CRUD de rutinas + ejercicios + asignaciones
+│       └── routines.js          #   CRUD de rutinas + ejercicios + asignaciones + estado
 │
 ├── src/                         # Frontend (SPA en JS puro)
 │   ├── main.js                  # Arranca el router cuando el DOM está listo
 │   ├── router/index.js          # Router SPA: mapea rutas → HTML + controlador
 │   ├── services/
-│   │   ├── api.js               # URL base + helpers de red (apiGet/apiSend/scopeQuery)
+│   │   ├── api.js               # URL base + helpers de red (apiGet/apiSend) + token
 │   │   └── auth.js              # AuthService: login/logout/sesión en localStorage
 │   ├── helpers/loadHTML.js      # fetch() de un archivo .html como texto
 │   ├── components/navbar/       # Barra de navegación (visible solo con sesión)
@@ -258,19 +324,36 @@ nodos.
 Centraliza **toda** la comunicación con el backend, para no repetir `fetch` en cada
 página:
 - **`API_URL`**: constante con la base `http://localhost:3001/api`.
-- **`apiGet(url)`**: GET que devuelve el JSON ya parseado (para listar/leer).
-- **`apiSend(url, method, body, fallbackMessage)`**: POST/PUT/DELETE con manejo de
+- **`apiGet(url)`**: GET autenticado que devuelve el JSON ya parseado (para listar/leer).
+  **Lanza** si el backend responde con error; antes lo devolvía como si fueran datos y la
+  página acababa recorriendo un `{error:"…"}` como si fuera un array.
+- **`apiSend(url, method, body, fallbackMessage)`**: POST/PUT/PATCH/DELETE con manejo de
   errores unificado (si el backend responde ≠ 2xx, lanza un `Error` con el mensaje del
-  servidor).
-- **`scopeQuery(user)`**: devuelve el `?...` de **aislamiento** según el rol (coach →
-  `?coach_id=`, admin → `?admin_id=`, superadmin → `''`). Es la pieza que hace que cada
-  usuario "vea lo suyo" (ver [§10](#10-roles-permisos-y-aislamiento-multi-tenant)).
+  servidor, así los avisos de permiso llegan tal cual al usuario).
+- **`getToken` / `setToken` / `clearToken`**: acceso al token en `localStorage`.
+- Ambos helpers añaden `Authorization: Bearer <token>` a cada petición y, ante un **401**,
+  limpian la sesión y mandan al login (es lo que ocurre cuando el token caduca).
+
+> **Ya no existe `scopeQuery(user)`.** Antes construía el `?coach_id=`/`?admin_id=` que
+> el backend se creía. Sobra porque ahora el ámbito se deriva del token en el servidor
+> (ver [§12.7](#127-aislamiento-derivado-de-un-token-jwt-no-de-la-url)).
 
 ### `src/services/auth.js` — sesión
-Objeto `AuthService` con `login`, `logout`, `getCurrentUser`, `isAuthenticated`. El login
-llama al backend (username + password), y si es válido guarda el usuario devuelto en
-`localStorage` bajo la clave `user_session`. Las contraseñas se verifican **en el
-servidor** con bcrypt; el frontend nunca las compara.
+Objeto `AuthService` con `login`, `logout`, `getCurrentUser`, `isAuthenticated` y
+`changePassword`. Las contraseñas se verifican **en el servidor** con bcrypt; el frontend
+nunca las compara.
+
+Al iniciar sesión guarda **dos cosas separadas**, y la distinción importa:
+
+| Clave | Qué es | Para qué |
+|-------|--------|----------|
+| `auth_token` | La **credencial** (JWT firmado) | Lo único que el backend acepta como prueba de identidad |
+| `user_session` | Los **datos** del usuario | Pintar la interfaz: nombre, rol, qué botones mostrar |
+
+`user_session` es texto plano y el usuario lo puede editar a mano. Si alguien se cambia
+el rol a `superadmin` ahí, verá más botones en pantalla — pero el backend leerá su rol
+**real** del token firmado y le responderá 403. Por eso las decisiones de interfaz pueden
+salir de `user_session`, pero las de seguridad jamás.
 
 ### `src/components/navbar/`
 - **`navbar.html`**: marcado de la barra (botones Dashboard, Rutinas, Ejercicios,
@@ -364,13 +447,37 @@ siguen el mismo flujo pero un nivel más arriba (primero crean coaches/admins).
 ## 6. Módulos del BACKEND
 
 El backend es una API REST con un archivo por recurso. Todos comparten el mismo `pool`
-de conexión (`db.js`) y el mismo patrón: validar entrada → ejecutar SQL parametrizado →
-responder JSON o un error con código HTTP adecuado.
+de conexión (`db.js`) y el mismo patrón: **exigir sesión** → validar entrada → ejecutar
+SQL parametrizado → responder JSON o un error con código HTTP adecuado.
+
+### `load-env.js` — configuración
+Carga `backend/.env` calculando su ruta desde `import.meta.url`, y no desde el directorio
+en que se lanzó node. **Por qué**: dotenv por defecto busca el `.env` en el directorio de
+trabajo; con `npm run api` desde la raíz buscaba `/Kinora/.env`, no lo encontraba y el
+servidor arrancaba sin base de datos ni `JWT_SECRET`. Debe importarse **antes** que
+cualquier módulo que lea `process.env`.
 
 ### `server.js` — punto de entrada
-Crea la app Express, habilita `cors` y `express.json()`, expone `/api/health`, y **monta
-cada router** bajo su prefijo (`/api/auth`, `/api/exercises`, …). Al hacer `listen`,
-prueba la conexión a la BD y lo reporta por consola.
+Crea la app Express, habilita `cors` (admite **varios orígenes** separados por comas) y
+`express.json()`, expone `/api/health`, y **monta cada router** bajo su prefijo
+(`/api/auth`, `/api/exercises`, …). Al hacer `listen`, prueba la conexión a la BD.
+
+> Su primera línea es `import "./load-env.js"`, y el orden importa: JavaScript evalúa
+> todos los `import` antes de ejecutar la primera instrucción, así que cargar el `.env`
+> más abajo sería demasiado tarde — `middleware/auth.js` ya habría leído `JWT_SECRET`
+> vacío.
+
+### `middleware/auth.js` — identidad y permisos
+El archivo más importante del backend. Contiene:
+- `signToken(user)` — firma el JWT al iniciar sesión.
+- `requireAuth` — verifica la firma y deja la identidad en `req.user`; si no, **401**.
+- `requireRole(...roles)` — restringe una ruta a ciertos roles; si no, **403**.
+- `canModify(user, row)` — **la regla única** de escritura: superadmin puede con todo;
+  `created_by IS NULL` (catálogo base) no lo toca nadie más; el resto, solo su creador.
+- `scopeFilter(user)` — el recorte de lectura que le toca a cada rol.
+
+Que `canModify` viva en un solo sitio es deliberado: si cada ruta implementara su propia
+versión, tarde o temprano una se dejaría media regla.
 
 ### `db.js` — conexión
 Crea un **Pool** de `pg` con los parámetros del `.env` y fija el `search_path` a
@@ -380,20 +487,26 @@ Pool y no una conexión suelta**: reutiliza conexiones entre peticiones (más ef
 seguro ante concurrencia).
 
 ### `routes/auth.js`
-- `POST /register`: crea un usuario + su perfil (coach o athlete) en una **transacción**.
-- `POST /login`: busca el usuario por `username`, compara la contraseña con
-  `bcrypt.compare`, y devuelve sus datos (incluyendo `coach_id`/`athlete_id` vía LEFT
-  JOIN) **sin** el hash.
+- `POST /login`: busca el usuario por `username`, compara con `bcrypt.compare` y devuelve
+  sus datos (con `coach_id`/`athlete_id` vía LEFT JOIN) **+ el token**, nunca el hash.
+- `POST /register`: crea usuario + perfil en una **transacción**. Protegida: solo
+  superadmin/admin, y no permite crear superadmins.
+- `POST /change-password`: exige la contraseña actual aunque ya haya sesión, para que
+  nadie secuestre una cuenta con el navegador abierto.
 
 ### `routes/exercises.js`
-CRUD del catálogo de ejercicios. El GET admite `?coach_id=` y `?admin_id=` para el
-aislamiento, e **incluye siempre el catálogo global** (`coach_id IS NULL`).
+CRUD del catálogo. `visibilityClause(user)` arma el WHERE de lectura según el rol, y cada
+`PUT`/`DELETE` comprueba la propiedad con `canModify` **antes** de escribir. Cada fila
+sale con `can_edit` para que el frontend sepa qué botones pintar. `GET /filters` alimenta
+el filtro en cascada del armador de rutinas.
 
 ### `routes/coaches.js`
-Listar y crear coaches (usuario `role='coach'` + perfil, en transacción). El `DELETE`
-hace un **borrado en cascada manual** (atletas → rutinas → ejercicios → usuario) dentro
-de una transacción, por una razón sutil de integridad explicada en el propio archivo
-(ver también [§12](#12-decisiones-de-diseño-y-alternativas)).
+CRUD de coaches (usuario `role='coach'` + perfil, en transacción). `assertCanManageCoach`
+impide que el admin A toque a los coaches del admin B — antes eso solo se aplicaba al
+listar, así que bastaba conocer un id ajeno para editarlo. El `DELETE` hace un **borrado
+en cascada manual** (atletas → rutinas → ejercicios → usuario) dentro de una transacción,
+por una razón sutil de integridad explicada en el propio archivo (ver también
+[§12.4](#124-borrado-en-cascada-manual-del-coach)).
 
 ### `routes/athletes.js`
 CRUD de atletas. Crear = usuario `role='athlete'` + perfil en transacción. Editar toca
@@ -439,23 +552,29 @@ Referencia rápida de **cada función** relevante, agrupada por archivo.
 | `router()` | `router/index.js` | Ciclo de navegación: protege rutas, pinta navbar, inyecta HTML, ejecuta el `init`. |
 | `navigateTo(path)` | `router/index.js` | Cambia la URL sin recargar y vuelve a renderizar. |
 | `loadHTML(path)` | `helpers/loadHTML.js` | Descarga un `.html` como texto; devuelve HTML de error si falla. |
-| `apiGet(url)` | `services/api.js` | GET → JSON parseado. |
-| `apiSend(url, method, body, msg)` | `services/api.js` | POST/PUT/DELETE con manejo de error unificado. |
-| `scopeQuery(user)` | `services/api.js` | Devuelve el `?coach_id=`/`?admin_id=`/`''` de aislamiento por rol. |
-| `AuthService.login(username, password)` | `services/auth.js` | Autentica contra el backend y guarda la sesión. |
-| `AuthService.logout()` | `services/auth.js` | Borra la sesión de `localStorage`. |
+| `apiGet(url)` | `services/api.js` | GET autenticado → JSON parseado. Lanza si el backend da error. |
+| `apiSend(url, method, body, msg)` | `services/api.js` | POST/PUT/PATCH/DELETE autenticado, con manejo de error unificado. |
+| `getToken()` / `setToken(t)` / `clearToken()` | `services/api.js` | Leen y escriben el token de sesión en `localStorage`. |
+| `AuthService.login(username, password)` | `services/auth.js` | Autentica, guarda el token y los datos del usuario. |
+| `AuthService.logout()` | `services/auth.js` | Borra token y datos de `localStorage`. |
 | `AuthService.getCurrentUser()` | `services/auth.js` | Devuelve el usuario en sesión o `null`. |
-| `AuthService.isAuthenticated()` | `services/auth.js` | `true` si hay sesión. |
+| `AuthService.isAuthenticated()` | `services/auth.js` | `true` si hay token **y** datos de usuario. |
+| `AuthService.changePassword(actual, nueva)` | `services/auth.js` | Cambia la contraseña del usuario en sesión. |
 | `renderNavbar()` | `components/navbar/navbar.js` | Pinta la barra y muestra/oculta enlaces por rol. |
 | `initLanding()` | `pages/landing/landing.js` | Engancha los CTA de la portada (login / solicitar acceso / menú móvil / footer legal). |
 | `initLogin()` | `pages/login/login.js` | Captura el submit del login y navega al dashboard si tiene éxito. |
 | `initDashboard()` | `pages/dashboard/dashboard.js` | Calcula y pinta las métricas (conteos) según el rol. |
 | `initProjects()` | `pages/projects/projects.js` | Inicializa la vista de rutinas y engancha eventos. |
-| `populateAthleteOptions()` | `pages/projects/projects.js` | Llena el multi-select de atletas para asignar. |
-| `populateExerciseOptions()` | `pages/projects/projects.js` | Llena el desplegable de ejercicios del catálogo. |
+| `loadFormData()` | `pages/projects/projects.js` | Descarga catálogo y atletas **una vez**; los filtros trabajan en memoria. |
+| `setupPickerEvents()` | `pages/projects/projects.js` | Conecta filtros y selector de atletas (una sola vez, no en cada render). |
+| `renderAthletePicker()` / `updateAthleteCount()` | `pages/projects/projects.js` | Casillas de atletas (sustituyen al `<select multiple>`) y contador. |
+| `populateMuscleFilter()` / `populateEquipmentFilter(m)` | `pages/projects/projects.js` | Pasos 1 y 2 de la cascada; el material depende del músculo elegido. |
+| `filterExercises()` / `renderExercisePicker()` | `pages/projects/projects.js` | Aplican los tres filtros y pintan el paso 3. |
+| `updateExercisePreview()` | `pages/projects/projects.js` | Muestra el detalle del ejercicio marcado. |
 | `handleAddExercise()` | `pages/projects/projects.js` | Agrega el ejercicio elegido (series/reps/etc.) al borrador. |
 | `renderExerciseList()` | `pages/projects/projects.js` | Pinta la lista de ejercicios del borrador (con botón "quitar"). |
-| `renderProjects()` | `pages/projects/projects.js` | Lista las rutinas (coach: editar/eliminar; atleta: solo lectura). |
+| `renderProjects()` | `pages/projects/projects.js` | Lista las rutinas; los botones salen de `can_edit`. |
+| `statusBadge(s)` / `renderStatusSelector(r, id)` / `updateStatus(e)` | `pages/projects/projects.js` | Estado por atleta: píldora, selector y guardado. |
 | `handleProjectSubmission(e)` | `pages/projects/projects.js` | Crea (POST) o actualiza (PUT) la rutina. |
 | `prepareProjectEdition(e)` | `pages/projects/projects.js` | Precarga el formulario para editar una rutina. |
 | `removeProject(e)` | `pages/projects/projects.js` | Elimina una rutina tras confirmar. |
@@ -477,13 +596,21 @@ Referencia rápida de **cada función** relevante, agrupada por archivo.
 | Función / Ruta | Archivo | Qué hace |
 |----------------|---------|----------|
 | `testConnection()` | `db.js` | Consulta de arranque para validar la conexión. |
-| `POST /auth/register` | `routes/auth.js` | Crea usuario + perfil en transacción. |
-| `POST /auth/login` | `routes/auth.js` | Verifica credenciales con bcrypt; devuelve el usuario sin el hash. |
-| GET/GET:id/POST/PUT/DELETE | `routes/exercises.js` | CRUD de ejercicios + filtros de aislamiento y catálogo global. |
-| GET/POST/DELETE | `routes/coaches.js` | Listar/crear coaches + borrado en cascada manual. |
-| GET/GET:id/POST/PUT/DELETE | `routes/athletes.js` | CRUD de atletas (crear = usuario + perfil). |
-| GET/POST/DELETE | `routes/admins.js` | CRUD de admins (opera sobre `users`). |
-| GET/GET:id/POST/PUT/DELETE + `/:id/assignments` | `routes/routines.js` | CRUD de rutinas + asignaciones sueltas. |
+| `signToken(user)` | `middleware/auth.js` | Firma el JWT con la identidad del usuario al iniciar sesión. |
+| `requireAuth` | `middleware/auth.js` | Verifica el token y deja `req.user`; si no, **401**. |
+| `requireRole(...roles)` | `middleware/auth.js` | Restringe una ruta a ciertos roles; si no, **403**. |
+| `canModify(user, row)` | `middleware/auth.js` | **La regla única de escritura**: superadmin todo; catálogo base nadie; el resto, su creador. |
+| `scopeFilter(user)` | `middleware/auth.js` | El recorte de lectura que le toca a cada rol. |
+| `POST /auth/login` | `routes/auth.js` | Verifica con bcrypt; devuelve el usuario **+ token**, sin el hash. |
+| `POST /auth/register` | `routes/auth.js` | Crea usuario + perfil en transacción (solo superadmin/admin). |
+| `POST /auth/change-password` | `routes/auth.js` | Cambia la contraseña propia; exige la actual. |
+| `visibilityClause(user)` | `routes/exercises.js`, `routines.js`, `athletes.js` | Arma el WHERE de lectura según el rol, con parámetros (nunca concatenando ids). |
+| `GET /exercises/filters` | `routes/exercises.js` | Grupos y equipos existentes, para el filtro en cascada. |
+| `assertExercisesVisible()` / `assertAthletesInScope()` | `routes/routines.js` | Impiden colar en una rutina ejercicios o atletas ajenos. |
+| `assertOwnsRoutine(user, id)` | `routes/routines.js` | Asignar es modificar: exige ser dueño de la rutina. |
+| `PATCH /routines/:id/assignments/:aid/status` | `routes/routines.js` | Estado por atleta; única escritura del atleta. |
+| `assertCanManageCoach()` | `routes/coaches.js` | Impide que un admin toque a los coaches de otro. |
+| `assertCanManageAthlete()` | `routes/athletes.js` | Ídem con atletas (el atleta se ve, pero no se edita a sí mismo). |
 | `insertChildren(client, id, ex, ath)` | `routes/routines.js` | Inserta ejercicios y asignaciones de una rutina. |
 | `mapError(e)` / `describeError(e)` | `routes/routines.js` | Traducen códigos de Postgres a HTTP + mensaje legible. |
 
@@ -500,20 +627,33 @@ SQL real** (no al revés).
   (bcrypt), `role` ∈ `superadmin` / `admin` / `coach` / `athlete` (minúscula), `email`
   (UNIQUE), `is_active`, `created_at`.
 - **`coaches`** — perfil del coach. Apunta a `user_id`; guarda `full_name`, `phone`,
-  `is_approved` y **`admin_id`** (el `users.id` del admin dueño; separa coaches por admin).
+  `document_number`, `birthdate`, `is_approved` y **`admin_id`** (el `users.id` del admin
+  dueño; separa coaches por admin).
 - **`athletes`** — perfil del atleta. Apunta a `user_id` y a `coach_id`; guarda
   `full_name`, `document_number`, `birthdate`.
 - **`exercises`** — catálogo. `name`, `muscle_group`, `equipment`, `difficulty` ∈
-  `principiante`/`intermedio`/`avanzado`, `description`, `gif_url`, `coach_id`
-  (`NULL` = ejercicio **global**, compartido por todos).
-- **`routines`** — cabecera de la rutina: `coach_id`, `name`, `description`,
-  `weekly_frequency`.
+  `principiante`/`intermedio`/`avanzado`, `description`, `gif_url`, `coach_id` (de qué
+  biblioteca cuelga) y **`created_by`** (quién lo puede modificar; `NULL` = **catálogo
+  base**).
+- **`routines`** — cabecera de la rutina: `coach_id`, **`created_by`**, `name`,
+  `description`, `weekly_frequency`.
 - **`routine_exercises`** — ejercicios dentro de una rutina (N:1 con `routines`):
   `sets`, `reps`, `rest_seconds`, `weight_kg`, `rpe`, `notes`, `order_index`.
 - **`routine_assignments`** — relación N:N rutina ↔ atleta: `routine_id`, `athlete_id`,
-  `is_active` (UNIQUE(`routine_id`, `athlete_id`)).
+  `is_active`, **`status`** ∈ `pending`/`in_progress`/`completed`/`cancelled`
+  (UNIQUE(`routine_id`, `athlete_id`)).
 - **`training_sessions`** / **`session_exercises`** — registro de lo **ejecutado** (vs.
   lo prescrito). Existen en el esquema pero **aún no tienen UI** (ver [§14](#14-limitaciones-conocidas-y-pendientes-todo)).
+
+> **`coach_id` y `created_by` no son lo mismo**, aunque suelen coincidir:
+> `coach_id` responde a *"¿de qué biblioteca cuelga?"* (visibilidad) y `created_by` a
+> *"¿quién lo puede modificar?"* (permiso). Se separan porque un **admin no tiene perfil
+> de coach**: lo que él crea tiene `coach_id NULL` pero `created_by = él`, y así no se
+> confunde con el catálogo base. Ver [§12.8](#128-el-dueño-created_by-separado-del-ámbito-coach_id).
+
+> **El `status` va en la asignación, no en la rutina**: una misma rutina se asigna a
+> varios atletas, y Ana puede haberla completado mientras Luis sigue en progreso. Si el
+> estado viviera en `routines`, ambos compartirían valor y se pisarían.
 
 ### Diagrama de relaciones (simplificado)
 
@@ -533,18 +673,30 @@ users ──1:1── coaches ──1:N── athletes
 | `user.name` | **`user.full_name`** (con *fallback* a `username`) |
 | ejercicio: `category` | **`muscle_group`** |
 | atleta: `age`/`weight`/`height`/`phone` | **no existen**; se usan `document_number`, `birthdate` |
-| rutina: `status` global | **no existe**; se modela asignación activa (`is_active`) |
+| rutina: `status` global | vive **por atleta** en `routine_assignments.status` |
 | "projects" | **rutinas** (`routines`) |
+| ejercicio "global" | **catálogo base** (`created_by IS NULL`) |
+| `coaches.brithdate` (mal escrito) | **`coaches.birthdate`** (corregido por migración) |
 
 ### Reglas de integridad importantes
 
 - `exercises.coach_id` es **`ON DELETE SET NULL`**, pero hay un índice único parcial
-  `UNIQUE(name) WHERE coach_id IS NULL` (nombres únicos en el catálogo global). Esta
-  combinación obliga al borrado en cascada manual de `coaches.js` (ver [§12](#12-decisiones-de-diseño-y-alternativas)).
+  `UNIQUE(name) WHERE created_by IS NULL` (nombres únicos en el catálogo base). Esta
+  combinación obliga al borrado en cascada manual de `coaches.js` (ver [§12.4](#124-borrado-en-cascada-manual-del-coach)).
+- `created_by` es **`ON DELETE SET NULL`**: si se borra el usuario que creó un ejercicio,
+  este **no** se borra — pasa al catálogo base. Es a propósito: desaparecer arrastraría
+  las rutinas de otros que lo estén usando.
+- Nombres únicos **por dueño**: `UNIQUE(created_by, name) WHERE created_by IS NOT NULL`.
+  Así un coach y un admin pueden tener cada uno su "Sentadilla", y ambas convivir con la
+  del catálogo base.
 - `athletes.user_id` es `ON DELETE CASCADE`: borrar el usuario borra el atleta.
 - `routine_exercises`/`routine_assignments` caen por `ON DELETE CASCADE` al borrar la
   rutina.
-- CHECK en `routine_exercises`: `weight_kg >= 0` y `0 <= rpe <= 10` (migración de prescripción).
+- `routine_exercises.exercise_id` es **`ON DELETE RESTRICT`**: no se puede borrar un
+  ejercicio que esté dentro de una rutina (daría **409**). Evita vaciar rutinas asignadas.
+- CHECK en `routine_exercises`: `weight_kg >= 0` y `0 <= rpe <= 10`.
+- CHECK en `routine_assignments.status`: solo los cuatro valores válidos. La BD es la
+  autoridad; el backend valida antes solo para no ir hasta ella con algo ya inválido.
 
 ---
 
@@ -552,32 +704,85 @@ users ──1:1── coaches ──1:N── athletes
 
 Todos cuelgan de `http://localhost:3001/api`.
 
+**Todas las rutas exigen el token de sesión**, salvo `/health` y `/auth/login`
+(que es donde se obtiene). El token va en la cabecera:
+
+```
+Authorization: Bearer <token>
+```
+
+Fíjate en que **ningún endpoint acepta ya `?coach_id=` ni `?admin_id=`**. El recorte
+de datos lo decide el servidor leyendo el token; no hay nada que el cliente pueda
+escribir en la URL para ver más de lo que le toca. Es decir: **todos los roles piden
+la misma URL** y cada uno recibe lo suyo.
+
+### Autenticación
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET  | `/health` | Chequeo de salud (`{status:"ok"}`). |
-| POST | `/auth/login` | Login por `username` + `password`. |
-| POST | `/auth/register` | Alta de usuario + perfil (coach o athlete). |
-| GET/POST | `/exercises` | Listar / crear ejercicio. |
-| GET | `/exercises?coach_id=N` | Aislamiento: ejercicios del coach N **+ catálogo global**. |
-| GET | `/exercises?admin_id=N` | Aislamiento: ejercicios de los coaches del admin N **+ global**. |
-| GET/PUT/DELETE | `/exercises/:id` | Ver / editar / borrar ejercicio. |
-| GET/POST | `/coaches` | Listar / crear coach (usuario + perfil; `POST` acepta `admin_id`). |
-| GET | `/coaches?admin_id=N` | Aislamiento: solo los coaches del admin N. |
-| DELETE | `/coaches/:id` | Borrar coach y **todos sus datos** en cascada (transacción). |
-| GET/POST | `/athletes` | Listar / crear atleta (usuario + perfil). |
-| GET | `/athletes?coach_id=N` | Aislamiento: los atletas del coach N. |
-| GET | `/athletes?admin_id=N` | Aislamiento: los atletas de los coaches del admin N. |
-| GET/PUT/DELETE | `/athletes/:id` | Ver / editar / borrar atleta. |
-| GET/POST | `/admins` | Listar / crear admin (solo superadmin). |
-| DELETE | `/admins/:id` | Borrar admin (solo si el usuario es realmente `role='admin'`). |
-| GET | `/routines` | Todas las rutinas (superadmin). |
-| GET | `/routines?coach_id=N` | Aislamiento: las rutinas del coach N. |
-| GET | `/routines?admin_id=N` | Aislamiento: las rutinas de los coaches del admin N. |
-| GET | `/routines?athlete_id=N` | Vista de atleta: solo las asignadas a ese atleta. |
-| GET/PUT/DELETE | `/routines/:id` | Ver / editar / borrar rutina. |
-| POST | `/routines` | Crear rutina + ejercicios + asignaciones. |
-| POST | `/routines/:id/assignments` | Asignar la rutina a un atleta (idempotente). |
-| DELETE | `/routines/:id/assignments/:athleteId` | Quitar una asignación. |
+| GET  | `/health` | Chequeo de salud (`{status:"ok"}`). Sin token. |
+| POST | `/auth/login` | Login por `username` + `password`. Devuelve los datos del usuario **+ `token`**. Sin token. |
+| POST | `/auth/register` | Alta de usuario + perfil. **Solo superadmin y admin**; no puede crear superadmins. |
+| POST | `/auth/change-password` | Cambia la contraseña del usuario de la sesión. Exige la actual. |
+
+### Ejercicios
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET  | `/exercises` | Los que el usuario puede ver. Cada fila trae `can_edit`. |
+| GET  | `/exercises/filters` | Grupos musculares y equipos existentes, para el filtro en cascada. |
+| POST | `/exercises` | Crear. El dueño (`created_by`) sale del token. El atleta no puede. |
+| GET  | `/exercises/:id` | Ver uno (404 si no es visible para él). |
+| PUT/DELETE | `/exercises/:id` | Editar / borrar. **Solo el dueño**; el catálogo base solo el superadmin. |
+
+### Coaches — *solo superadmin y admin*
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET  | `/coaches` | Los de su ámbito (el admin, solo los suyos). |
+| GET  | `/coaches/:id` | Ver uno (403 si es de otro admin). |
+| POST | `/coaches` | Crear usuario + perfil. El `admin_id` sale del token. |
+| PUT  | `/coaches/:id` | Editar perfil, correo y acceso (`is_active`). |
+| DELETE | `/coaches/:id` | Borrar el coach y **todos sus datos** en cascada (transacción). |
+
+### Atletas
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET  | `/athletes` | Los de su ámbito. Incluye `routine_count` y `completed_count` (cumplimiento). |
+| GET  | `/athletes/:id` | Ver uno. El atleta solo se ve a sí mismo. |
+| POST | `/athletes` | Crear. Si lo crea un coach, queda a su cargo. |
+| PUT/DELETE | `/athletes/:id` | Editar / borrar. Solo quien lo tiene a cargo. |
+
+### Admins — *solo superadmin*
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET  | `/admins` | Listar, con `coach_count` (cuántos coaches tiene cada uno). |
+| POST | `/admins` | Crear. |
+| PUT  | `/admins/:id` | Editar usuario, correo y acceso (`is_active`). |
+| DELETE | `/admins/:id` | Borrar. Devuelve `orphaned_coaches`: sus coaches quedan sin dueño, no se borran. |
+
+### Rutinas
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET  | `/routines` | Las de su ámbito. El atleta, solo las asignadas. Trae `exercises`, `assignments` y `can_edit`. |
+| GET  | `/routines/:id` | Ver una (404 si no es visible para él). |
+| POST | `/routines` | Crear rutina + ejercicios + asignaciones (una transacción). |
+| PUT/DELETE | `/routines/:id` | Editar / borrar. **Solo el dueño.** |
+| POST | `/routines/:id/assignments` | Asignar a un atleta (idempotente). Solo el dueño y solo a atletas suyos. |
+| DELETE | `/routines/:id/assignments/:athleteId` | Quitar la asignación. |
+| PATCH | `/routines/:id/assignments/:athleteId/status` | Cambiar el estado. **Única escritura del atleta**, y solo sobre la suya. |
+
+### Códigos de respuesta
+
+| Código | Significa |
+|--------|-----------|
+| **401** | No hay token, es inválido o caducó → hay que volver a iniciar sesión. |
+| **403** | Hay sesión, pero ese usuario no tiene permiso (no es suyo, o su rol no llega). |
+| **404** | No existe **o no es visible para él**. Se usa en vez de 403 al leer, para no confirmar que ese id existe. |
+| **409** | Conflicto: nombre duplicado, o se intenta borrar algo que otro está usando. |
 
 **Traducción de errores de PostgreSQL a HTTP** (comentado en el código):
 `23505` = duplicado → **409**; `23503` = clave foránea inexistente → **400/409**;
@@ -596,44 +801,90 @@ Hay **cuatro roles** en jerarquía (cada uno "por encima" del siguiente):
 - **coach**: gestiona ejercicios, atletas (los suyos) y rutinas. Solo ve **lo suyo**.
 - **athlete**: vista de solo lectura de sus rutinas asignadas.
 
-### Matriz de visibilidad
+### Las dos preguntas que hay que separar
 
-| Recurso | Coach | Admin | Superadmin |
-|---------|-------|-------|------------|
-| Coaches | — | solo `admin_id = suyo` | todos |
-| Atletas | solo `coach_id = suyo` | los de **sus** coaches | todos |
-| Rutinas | solo `coach_id = suyo` | las de **sus** coaches | todas |
-| Ejercicios | `coach_id = suyo` **+** globales | los de **sus** coaches **+** globales | todos |
-| Admins | — | — | los gestiona |
+Casi toda la confusión con los permisos viene de mezclar dos cosas distintas:
+
+- **VER** (lectura) → *¿qué filas te salen al listar?* Lo decide tu ámbito.
+- **MODIFICAR** (escritura) → *¿puedes editar o borrar ESTA fila?* Lo decide quién la creó.
+
+**Ver algo no da derecho a tocarlo.** Un coach ve la "Sentadilla" del catálogo base y
+la usa en sus rutinas, pero no la puede cambiar: la comparten todos los demás. Es
+exactamente la regla de "no modificar los de la base de datos".
+
+### Matriz de VISIBILIDAD (qué ves al listar)
+
+| Recurso | Athlete | Coach | Admin | Superadmin |
+|---------|---------|-------|-------|------------|
+| Ejercicios | base + los de su coach | base **+ los suyos** | base + los suyos + los de **sus** coaches | todos |
+| Rutinas | solo las asignadas a él | base **+ las suyas** | base + las suyas + las de **sus** coaches | todas |
+| Atletas | solo él mismo | solo los suyos | los de **sus** coaches | todos |
+| Coaches | — | — | solo `admin_id = suyo` | todos |
+| Admins | — | — | — | los gestiona |
+
+### Matriz de MODIFICACIÓN (qué puedes editar o borrar)
+
+| Quién | Catálogo base (`created_by IS NULL`) | Lo suyo | Lo de otro |
+|-------|--------------------------------------|---------|------------|
+| Athlete | ✗ (solo el estado de SU rutina) | ✗ | ✗ |
+| Coach | ✗ | ✓ | ✗ |
+| Admin | ✗ | ✓ | ✗ |
+| Superadmin | ✓ | ✓ | ✓ |
 
 ### Cómo funciona técnicamente
 
-Dos "llaves" separan los datos, en cascada **admin → coach → atleta/rutina/ejercicio**:
-- **`coaches.admin_id`** → apunta al `users.id` del admin dueño.
-- **`coach_id`** (en `athletes`/`routines`/`exercises`) → separa esos recursos por coach.
+**La identidad viaja en un token firmado (JWT), no en la URL.** Al iniciar sesión, el
+servidor mete en el token quién eres (`id`, `role`, `coach_id`, `athlete_id`) y lo firma
+con `JWT_SECRET`. El navegador lo devuelve en cada petición y el servidor comprueba la
+firma. Como el secreto solo lo conoce el servidor, **cambiar un solo carácter del token
+lo invalida**: no se puede falsificar.
 
-El backend acepta `?coach_id=N` y `?admin_id=N` en los GET; para el filtro por admin hace
-`JOIN` con `coaches` y compara `coaches.admin_id`. El frontend genera ese query con
-`scopeQuery(user)`:
-- coach → `?coach_id=<user.coach_id>`
-- admin → `?admin_id=<user.id>`
-- superadmin → `''` (sin filtro)
+De ahí salen las tres columnas que gobiernan los permisos:
 
-Al **crear**, el coach nace con su `admin_id`/`coach_id` grabado, así el dato queda
-aislado desde su origen.
+| Columna | Responde a | Dónde |
+|---------|-----------|-------|
+| `created_by` | **quién puede modificarlo** | `exercises`, `routines` |
+| `coach_id` | de qué biblioteca cuelga (visibilidad) | `exercises`, `routines`, `athletes` |
+| `coaches.admin_id` | qué admin manda sobre ese coach | `coaches` |
 
-> ⚠️ **Seguridad**: como la API aún **no usa token** (ver [§14](#14-limitaciones-conocidas-y-pendientes-todo)), `coach_id`/`admin_id`
-> viajan en la URL y son **falsificables** a mano. El aislamiento hoy es a nivel de UX,
-> no de seguridad real.
+`created_by` apunta a `users.id`, así que sirve igual para un coach y para un admin
+(recuerda: **un admin no tiene perfil**, es solo una fila en `users`). Su regla es una
+sola, y vive en un único sitio — `canModify()` en `backend/middleware/auth.js`:
 
-### Credenciales de prueba (tras `npm run seed`)
+```js
+if (user.role === "superadmin") return true;   // el superadmin puede con todo
+if (row.created_by == null) return false;      // catálogo base: intocable
+return row.created_by === user.id;             // solo su creador
+```
 
-| Rol | Usuario | Contraseña |
-|-----|---------|------------|
-| superadmin | `superadmin` | `123456` |
-| admin | `admin` | `123456` |
-| coach | `coach` | `123456` |
-| athlete | `atleta` | `123456` |
+Al **crear**, el dueño lo pone el servidor desde el token, nunca el cliente:
+
+- **superadmin** → `created_by = NULL` → lo que crea **es** el catálogo base, y lo ve todo el mundo.
+- **coach / admin** → `created_by = él mismo` → material privado que solo él edita.
+
+El frontend recibe un `can_edit` calculado por el backend en cada fila y lo usa para
+pintar o esconder los botones. **Eso es solo cosmética**: el permiso se vuelve a
+comprobar en cada `PUT`/`DELETE`. Si alguien edita `user_session` en el navegador para
+ponerse `role: "superadmin"`, verá más botones — y recibirá un `403` en cuanto los pulse,
+porque su rol real está dentro del token firmado.
+
+> **La diferencia con la versión anterior:** antes el ámbito llegaba en la URL
+> (`?coach_id=3`) y el servidor se lo creía. Cambiar ese número a mano bastaba para ver
+> los datos de otro. El aislamiento era **de interfaz**, no de seguridad. Hoy la URL no
+> lleva ámbito y no hay nada que falsificar.
+
+### Credenciales
+
+`node backend/seed.js` crea usuarios de ejemplo (`superadmin`, `admin`, `coach`,
+`atleta`, todos con contraseña `123456`), pero **solo si no existen ya**. En una base con
+datos reales puede que solo exista el `superadmin`.
+
+> El superadmin del seed es configurable con `SUPERADMIN_USERNAME` / `_PASSWORD` /
+> `_EMAIL` en `backend/.env`. Para crear/promover un superadmin sin correr todo el seed:
+> `node backend/create-superadmin.js <usuario> <contraseña> [correo]`.
+>
+> ⚠️ Las contraseñas `123456` son solo para desarrollo local. Antes de publicar esto en
+> internet hay que cambiarlas todas.
 
 > El superadmin del seed es configurable con `SUPERADMIN_USERNAME` / `_PASSWORD` /
 > `_EMAIL` en `backend/.env`. Para crear/promover un superadmin sin correr todo el seed:
@@ -650,15 +901,32 @@ Seguir este recorrido es la mejor forma de entender la conexión completa:
 2. `login.js` llama a `AuthService.login(username, password)` (`services/auth.js`).
 3. `AuthService` hace `fetch(POST /api/auth/login)` con el JSON.
 4. `server.js` enruta `/api/auth` → `routes/auth.js`.
-5. `auth.js` busca el usuario por `username`, compara la contraseña con
-   `bcrypt.compare()` y, si coincide, devuelve sus datos (rol, `full_name`,
-   `coach_id`/`athlete_id`) **sin** el hash.
-6. `AuthService` guarda ese objeto en `localStorage` bajo `user_session`.
-7. `login.js` hace `navigateTo('/dashboard')` y el router pinta el dashboard.
+5. `auth.js` busca el usuario por `username` y compara la contraseña con
+   `bcrypt.compare()`. Si coincide, llama a `signToken(user)`
+   (`middleware/auth.js`), que **firma un token** con su identidad.
+6. Devuelve sus datos (rol, `full_name`, `coach_id`/`athlete_id`) **+ el `token`**, y
+   nunca el hash de la contraseña.
+7. `AuthService` guarda dos cosas por separado en `localStorage`:
+   - `auth_token` → la **credencial**: lo que prueba quién eres ante el backend.
+   - `user_session` → los **datos para pintar** la interfaz (nombre, rol).
+8. `login.js` hace `navigateTo('/dashboard')` y el router pinta el dashboard.
 
-A partir de ahí, todas las páginas leen la sesión con `AuthService.getCurrentUser()` y
-llaman a los endpoints con `apiGet`/`apiSend`, usando `scopeQuery(user)` para el
-aislamiento. El `role` de la sesión decide qué botones/vistas se muestran.
+**Y en cada petición posterior:**
+
+9. La página llama a `apiGet`/`apiSend` (`services/api.js`), que añaden solo
+   `Authorization: Bearer <token>`. Ya no se manda ningún filtro en la URL.
+10. En el backend, `requireAuth` comprueba la firma y deja la identidad verificada en
+    `req.user`. Si el token falta, caducó o fue manipulado, corta con **401** y la ruta
+    ni se ejecuta.
+11. La ruta arma su `WHERE` a partir de `req.user` (nunca de `req.query`), así que cada
+    quien recibe su ámbito.
+12. Si el backend responde 401, `api.js` limpia la sesión y manda al login: es lo que
+    pasa cuando el token caduca (a las 8 horas).
+
+> Las dos claves de `localStorage` tienen papeles distintos a propósito. `user_session`
+> es texto plano que el usuario puede editar; sirve para decidir **qué se dibuja**.
+> `auth_token` está firmado y sirve para decidir **qué se permite**. Por eso las
+> decisiones de interfaz pueden salir de `user_session`, pero las de seguridad jamás.
 
 ---
 
@@ -691,9 +959,9 @@ Aquí se explican las decisiones no obvias y **qué otras formas había** de res
 
 ### 12.4. Borrado en cascada manual del coach
 - **Problema**: `exercises.coach_id` es `ON DELETE SET NULL`. Si solo se borrara el
-  usuario del coach, sus ejercicios pasarían a `coach_id NULL` (catálogo global) y su
-  nombre podría **chocar** con el índice único parcial `UNIQUE(name) WHERE coach_id IS
-  NULL` → error `23505` y borrado revertido.
+  usuario del coach, sus ejercicios pasarían a `coach_id NULL` y su nombre podría
+  **chocar** con el índice único parcial de nombres del catálogo base → error `23505` y
+  borrado revertido.
 - **Qué se hizo**: en `DELETE /coaches/:id`, dentro de una transacción, se borran en
   orden atletas → rutinas → ejercicios → usuario.
 - **Alternativa**: cambiar la FK a `ON DELETE CASCADE` en el esquema — más limpio, pero
@@ -710,16 +978,73 @@ Aquí se explican las decisiones no obvias y **qué otras formas había** de res
   se instala sin toolchain de C. `bcrypt` (nativo) es más rápido pero da problemas de
   instalación entre máquinas. Para local, `bcryptjs` es más portable.
 
-### 12.7. Aislamiento en la query, no en un token
-- **Qué se hizo**: el frontend manda `?coach_id=`/`?admin_id=`.
-- **Limitación asumida**: es **falsificable** (ver [§14](#14-limitaciones-conocidas-y-pendientes-todo)). Se aceptó porque el
-  proyecto es académico y corre en local; la alternativa correcta (derivar el id de un
-  JWT en el servidor) queda como pendiente.
+### 12.7. Aislamiento derivado de un token (JWT), no de la URL
+- **Cómo era antes**: el frontend mandaba `?coach_id=`/`?admin_id=` y el servidor se lo
+  creía. Cambiar ese número a mano en la barra de direcciones bastaba para leer los datos
+  de otro coach, y un `curl` se saltaba la interfaz entera. El aislamiento era **de
+  interfaz, no de seguridad**.
+- **Qué se hizo**: el login firma un JWT con la identidad real; `requireAuth` lo verifica
+  y deja el resultado en `req.user`; cada ruta arma su `WHERE` **desde `req.user`, nunca
+  desde `req.query`**. Ese fue el cambio de fondo: no que se añadiera un token, sino que
+  **el cliente dejó de ser la fuente de su propia identidad**.
+- **Alternativas**:
+  - *Sesiones con cookie en servidor*: más fácil de revocar al instante, pero obliga a
+    guardar estado de sesión y complica el CORS entre `:5173` y `:3001`. Un JWT no
+    necesita estado.
+  - *Seguridad a nivel de fila en PostgreSQL (RLS)*: la protección más férrea, porque
+    vive en la BD y no se puede saltar desde ninguna capa. Descartada por ser bastante
+    más compleja de montar y depurar para lo que pide este proyecto.
+- **Contrapartida asumida**: un JWT **no se puede revocar** antes de que caduque. Si se
+  suspende a un usuario (`is_active = false`), su token sigue valiendo hasta 8 horas. Se
+  acepta porque la ventana es corta; si hiciera falta cortar el acceso al instante,
+  habría que comprobar `is_active` contra la BD en cada petición.
 
-### 12.8. Sin framework en el frontend
+### 12.8. El dueño (`created_by`) separado del ámbito (`coach_id`)
+- **El problema**: "de quién es un ejercicio" se deducía de `exercises.coach_id`. Pero un
+  **admin no tiene perfil de coach**, así que todo lo que creaba nacía con `coach_id NULL`
+  y se confundía con el catálogo base. No había forma de distinguir "material del sistema"
+  de "material de un admin".
+- **Qué se hizo**: una columna `created_by → users.id`, que vale igual para coach y admin,
+  y que define **solo** el permiso de escritura. `coach_id` se quedó con la visibilidad.
+  Dos columnas porque son dos preguntas distintas (ver [§10](#10-roles-permisos-y-aislamiento-multi-tenant)).
+- **`created_by IS NULL` = catálogo base**: todos lo ven y lo usan, solo el superadmin lo
+  toca. Al ser el valor por defecto de una columna nueva, los datos que ya existían
+  quedaron bien clasificados sin tocarlos.
+- **Efecto lateral que hubo que arreglar**: los índices de nombre único iban por
+  `coach_id`, así que un admin que creara "Sentadilla" chocaba contra la del catálogo
+  base con un error de duplicado sin sentido para él. Se movieron a `created_by`.
+
+### 12.9. Sin framework en el frontend
 - **Trade-off**: más código repetitivo (cada página engancha sus propios eventos y
   vuelve a pintar a mano), a cambio de **cero dependencias** y transparencia total del
   flujo. Un framework reduciría el *boilerplate* pero añadiría curva y peso.
+
+### 12.10. Filtro en cascada en vez de un desplegable único
+- **El problema**: los ejercicios iban todos en un `<select>` plano. Con un catálogo de
+  35 (y creciendo), encontrar uno era desplazarse por una lista sin orden útil para quien
+  está planificando un entrenamiento.
+- **Qué se hizo**: se reduce por pasos, en el orden en que se piensa una rutina —
+  **músculo → material → ejercicio** — más un buscador por nombre que salta los tres
+  pasos. Cada paso se calcula a partir del anterior: si eliges "pecho", el material solo
+  ofrece el que existe **para pecho**, así que ninguna combinación deja la lista vacía.
+- **Por qué se filtra en memoria y no con llamadas a la API**: el catálogo se descarga una
+  vez al abrir el formulario. Si cada tecla del buscador disparara un `fetch`, la lista
+  parpadearía, las respuestas podrían llegar desordenadas y se castigaría al servidor sin
+  motivo. El catálogo no cambia mientras armas una rutina.
+- **Alternativa**: `<datalist>` (autocompletado nativo del navegador). Se descartó porque
+  no permite mostrar el detalle del ejercicio ni deshabilitar los ya agregados.
+
+### 12.11. Casillas en vez de `<select multiple>` para los atletas
+- **El problema**: asignar la rutina a varios atletas exigía mantener **Ctrl/Cmd** pulsado
+  mientras se hacía clic. En un móvil no existe la tecla Ctrl: era **literalmente
+  imposible** asignar una rutina a dos atletas desde un teléfono.
+- **Qué se hizo**: una lista de casillas donde cada toque marca o desmarca, con buscador
+  (aparece si hay más de 6), botones "Todos"/"Ninguno" y un contador de seleccionados.
+  Filas de 44px de alto: por debajo de eso, el dedo falla el toque.
+- **Detalle que lo hace funcionar**: la selección vive en un `Set` de JavaScript, **no en
+  el DOM**. Al escribir en el buscador la lista se redibuja, y si el estado estuviera en
+  las casillas, los marcados que quedan fuera del filtro se perderían solos. Por eso, al
+  guardar, los ids salen del `Set` y no de leer el DOM.
 
 ---
 
@@ -747,7 +1072,6 @@ Cambios aplicados en esta revisión para quitar código muerto, arreglos y simpl
   el `import.meta.env.VITE_API_URL` de producción).
 - `server.js`: se simplificó el comentario de CORS (se quitó la mención a dominios de
   la nube).
-- `backend/.env`: se quitaron `JWT_SECRET` y `JWT_EXPIRES_IN` (no hay JWT implementado).
 
 **Archivos/artefactos sin uso**
 - `package.json` (raíz): se quitó la dependencia **`pg`** (el navegador no puede usarla).
@@ -757,25 +1081,77 @@ Cambios aplicados en esta revisión para quitar código muerto, arreglos y simpl
 - `README.md`: se reescribió (estaba desactualizado: hablaba de `json-server`, `db.json`
   y roles `Coach`/`atleta` que ya no existen).
 
+### Revisión de seguridad y UX (julio 2026)
+
+**Seguridad** (detalle en [§10](#10-roles-permisos-y-aislamiento-multi-tenant) y [§12.7](#127-aislamiento-derivado-de-un-token-jwt-no-de-la-url))
+- Se añadió **autenticación con JWT**: `backend/middleware/auth.js` (`signToken`,
+  `requireAuth`, `requireRole`, `canModify`, `scopeFilter`). Todas las rutas quedaron
+  protegidas y el ámbito ya **no** se lee de la URL.
+- `POST /auth/register` **era público**: cualquiera podía crear un superadmin sin
+  autenticarse. Ahora exige sesión de superadmin/admin y no permite crear superadmins.
+- Se añadió el chequeo de **propiedad** en cada `PUT`/`DELETE`: antes bastaba con conocer
+  un id ajeno para editarlo, porque el aislamiento solo se aplicaba al listar.
+- `JWT_SECRET` volvió al `.env` y ahora es **obligatorio**: el servidor aborta si falta,
+  en vez de arrancar con un secreto inseguro sin avisar.
+
+**Bugs encontrados**
+- `POST /api/coaches` **descartaba en silencio** `document_number` y la fecha de
+  nacimiento: el formulario los pedía como obligatorios y nunca se guardaban.
+- La columna `coaches.brithdate` estaba **mal escrita** (`athletes` sí usa `birthdate`).
+  Renombrada por migración.
+- `backend/load-env.js` (nuevo): dotenv buscaba el `.env` en el directorio **desde el que
+  se lanza node**, no junto al archivo. Con `npm run api` desde la raíz no lo encontraba y
+  el servidor arrancaba sin configuración. Ahora la ruta se calcula desde
+  `import.meta.url` y funciona desde cualquier sitio.
+- `CORS_ORIGIN` solo admitía **un** origen. Si Vite saltaba al 5174 por tener el 5173
+  ocupado, la app cargaba pero todas las llamadas fallaban. Ahora acepta una lista.
+- `api.js`: `apiGet` devolvía los errores **como si fueran datos**, así que las páginas
+  intentaban recorrer un `{error:"…"}` como un array. Ahora lanza.
+
+**CRUD que faltaba**
+- `PUT /api/coaches/:id` y `PUT /api/admins/:id`: sin ellos, corregir un correo mal
+  escrito obligaba a borrar y recrear — perdiendo por el camino rutinas y atletas.
+
+**UX** (detalle en [§12.10](#1210-filtro-en-cascada-en-vez-de-un-desplegable-único) y [§12.11](#1211-casillas-en-vez-de-select-multiple-para-los-atletas))
+- Armador de rutinas: filtro en cascada **músculo → material → ejercicio** + buscador.
+- Atletas: casillas en vez de `<select multiple>` — asignar a varios era imposible en móvil.
+- Se recuperó el **estado de la rutina** (pendiente/en progreso/completada/cancelada), por
+  atleta, y el **% de cumplimiento** en la lista de atletas.
+
 ---
 
 ## 14. Limitaciones conocidas y pendientes (TODO)
 
-- **Autenticación por token (lo más urgente)**: el login **no emite JWT**. La sesión se
-  guarda tal cual en `localStorage` y los endpoints están **abiertos** (sin middleware
-  que valide quién llama ni su rol). El aislamiento admin/coach es **falsificable**
-  porque `coach_id`/`admin_id` vienen de la query. Solución correcta: emitir un JWT en el
-  login, protegerlas con middleware por rol y **derivar** el `coach_id`/`admin_id` del
-  token, no de la URL.
+**Seguridad**
+- **Recuperar contraseña**: existe `POST /auth/change-password` (exige la actual), pero no
+  hay un "olvidé mi contraseña" para quien no puede entrar. Si un atleta pierde la suya,
+  hoy la única salida es que su coach la reponga por la BD. Hacerlo bien pide correo.
+- **El token no se puede revocar** antes de que caduque (8 h): suspender a un usuario
+  (`is_active = false`) le impide **volver** a entrar, pero su sesión abierta sigue
+  valiendo. Ver la contrapartida en [§12.7](#127-aislamiento-derivado-de-un-token-jwt-no-de-la-url).
+- **El token vive en `localStorage`**, así que es legible por JavaScript y por tanto
+  vulnerable a XSS. Lo correcto en producción sería una cookie `httpOnly`; se aceptó
+  porque simplifica el CORS entre `:5173` y `:3001` en local.
+- **Las contraseñas de ejemplo son `123456`.** Hay que cambiarlas antes de exponer esto.
+- **No hay límite de intentos de login**: se puede probar contraseñas a lo bruto sin freno.
+
+**Funcionalidad**
 - **Registro de entrenamientos**: `training_sessions` / `session_exercises` existen en el
-  esquema pero **no tienen UI**.
-- **Editar credenciales** (usuario/contraseña) de coaches y atletas ya creados: hoy solo
-  se establecen al crear.
-- **Página de "perfil de atleta"** para el coach (ver un atleta + sus rutinas en detalle),
-  a construir contra `/api/athletes/:id` y `/api/routines?athlete_id=`.
-- **Datos previos sin dueño**: los coaches creados antes de la migración `admin_id`
-  tienen `admin_id = NULL`, por lo que **solo el superadmin los ve**. Para asignarlos:
+  esquema pero **no tienen UI**. Es lo que cierra el círculo entre lo que el coach
+  prescribe y lo que el atleta ejecuta (ver [§12.5](#125-prescripción-rutina-vs-ejecución-sesión)).
+- **Página de "perfil de atleta"** para el coach (un atleta + sus rutinas en detalle),
+  a construir contra `/api/athletes/:id`.
+- **Editar el usuario/contraseña** de coaches y atletas ya creados: hoy solo se
+  establecen al crear, y cada quien cambia la suya con `/auth/change-password`.
+- **Editar una rutina reinicia el estado de sus atletas** a "pendiente", porque el PUT
+  borra y reinserta las asignaciones (ver [§12.3](#123-editar-rutina--borrar-y-reinsertar-los-hijos)).
+
+**Datos**
+- **Coaches sin dueño**: los creados antes de la migración `admin_id`, o directamente por
+  el superadmin, tienen `admin_id = NULL` y **solo los ve el superadmin**. Para asignarlos:
   `UPDATE base_v1.coaches SET admin_id = <user_id_del_admin> WHERE id = <coach>;`
+- **No hay pruebas automatizadas.** La verificación es manual (ver
+  `.claude/skills/verify/SKILL.md`, que documenta cómo levantar y conducir la app).
 
 ---
 
@@ -792,25 +1168,30 @@ Cambios aplicados en esta revisión para quitar código muerto, arreglos y simpl
 | **Pool** | Conjunto de conexiones a Postgres reutilizables (`db.js`). |
 | **Transacción** (`BEGIN/COMMIT/ROLLBACK`) | Grupo de operaciones SQL "todo o nada". |
 | **Hash / bcrypt** | Cifrado unidireccional de la contraseña; no se puede revertir, solo comparar. |
-| **Aislamiento multi-tenant** | Que cada usuario vea solo "lo suyo" según su rol y sus llaves (`coach_id`/`admin_id`). |
+| **Aislamiento multi-tenant** | Que cada usuario vea solo "lo suyo" según su rol. El recorte lo decide el servidor a partir del token. |
 | **Prescripción** | Lo que el coach pide en la rutina (peso/RPE/notas objetivo), en `routine_exercises`. |
 | **Ejecución / sesión** | Lo que el atleta realmente hizo (futuro, `session_exercises`). |
-| **Catálogo global** | Ejercicios con `coach_id NULL`, visibles para todos. |
+| **Catálogo base** | Ejercicios y rutinas con **`created_by IS NULL`**: los ve y usa todo el mundo, pero solo el superadmin los modifica. Antes se le llamaba "catálogo global". |
+| **`created_by`** | El **dueño**: quién puede modificar esa fila. Responde a "¿es mío?". |
+| **`coach_id`** | El **ámbito**: de qué biblioteca de coach cuelga. Responde a "¿lo veo?". No confundir con `created_by`. |
+| **`can_edit`** | Campo que el backend añade a cada fila para que el frontend sepa si pintar los botones. Es cosmética: el permiso se revalida en cada escritura. |
 | **Migración** | Script SQL versionado que evoluciona el esquema (`backend/migrations/`). |
 | **Idempotente** | Que se puede ejecutar varias veces con el mismo resultado (seed y migraciones lo son). |
 | **RPE** | *Rate of Perceived Exertion*: esfuerzo percibido, escala 0–10. |
 | **`muscle_group`** | Grupo muscular del ejercicio (lo que antes se llamaba "categoría"). |
-| **`scopeQuery`** | Helper del frontend que arma el `?coach_id=`/`?admin_id=` de aislamiento. |
+| **Filtro en cascada** | Reducir el catálogo por pasos (músculo → material → ejercicio), donde cada paso se calcula con el anterior. |
 | **Seed** | Carga de datos iniciales de prueba (`seed.js`). |
 | **projects = rutinas** | La carpeta `projects/` gestiona rutinas; el nombre es herencia histórica. |
 | **ESM / ES Modules** | Sistema de módulos estándar de JavaScript (`import`/`export`). El proyecto lo usa en front y back (`"type": "module"`). |
 | **CORS** (Cross-Origin Resource Sharing) | Mecanismo del navegador que permite que el frontend (`:5173`) llame a la API (`:3001`), en distinto puerto. Se habilita con el middleware `cors` en `server.js`. |
-| **JWT** (JSON Web Token) | Token firmado para autenticar peticiones sin guardar sesión en el servidor. **No está implementado** en Kinora; figura como pendiente en [§14](#14-limitaciones-conocidas-y-pendientes-todo). |
+| **JWT** (JSON Web Token) | Token firmado que prueba quién eres en cada petición, sin que el servidor guarde sesión. Va en `Authorization: Bearer …`. Está **firmado, no cifrado**: cualquiera puede leer su contenido, pero nadie puede alterarlo sin el `JWT_SECRET`. |
+| **`JWT_SECRET`** | La clave con la que el servidor firma los tokens (en `backend/.env`). Si se filtrara, cualquiera podría fabricar tokens y hacerse pasar por superadmin. |
+| **401 vs 403** | **401** = no sé quién eres (falta el token o caducó) → vuelve a entrar. **403** = sé quién eres, pero esto no es tuyo. |
 | **HMR** (Hot Module Replacement) | Recarga en caliente de Vite: al guardar un archivo, actualiza la vista en el navegador sin recargar toda la página. |
 | **FK / clave foránea** (foreign key) | Columna que referencia la clave primaria de otra tabla (p. ej. `athletes.coach_id → coaches.id`). Garantiza integridad referencial y define el comportamiento en cascada (`ON DELETE CASCADE`/`SET NULL`). |
 | **Payload** | El cuerpo (JSON) que el frontend envía al backend en un POST/PUT (p. ej. el objeto rutina con sus ejercicios y atletas). |
-| **localStorage** | Almacén clave-valor del navegador, persistente entre recargas. Kinora guarda ahí la sesión (`user_session`). |
-| **Middleware** | Función que Express ejecuta antes de las rutas (p. ej. `cors`, `express.json()` que parsea el JSON entrante). |
+| **localStorage** | Almacén clave-valor del navegador, persistente entre recargas. Kinora guarda ahí `auth_token` (la credencial) y `user_session` (los datos para pintar). |
+| **Middleware** | Función que Express ejecuta antes de las rutas (p. ej. `cors`, `express.json()`, o `requireAuth`, que corta la petición si no hay token válido). |
 
 ---
 

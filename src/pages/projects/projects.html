@@ -1,5 +1,10 @@
+<!--
+  Vista de Rutinas.
+  Se inyecta como fragmento dentro de <div id="app"> desde el router,
+  por eso NO lleva <html>, <head> ni <body>.
+-->
 <div>
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;">
     <h2>Gestión de Rutinas</h2>
     <button id="btn-show-create" class="btn">+ Nueva Rutina</button>
   </div>
@@ -24,45 +29,98 @@
         <input type="number" id="routine-frequency" min="1" max="7" value="3" required>
       </div>
 
+      <!-- ── Atletas asignados ───────────────────────────────────────────────
+           Antes esto era un <select multiple>, que para elegir a varios obliga a
+           mantener Ctrl/Cmd pulsado. En un móvil no hay tecla Ctrl: era
+           literalmente imposible asignar la rutina a dos atletas desde el
+           teléfono. Con casillas, cada toque marca o desmarca uno.
+           El buscador aparece solo cuando hay muchos atletas (lo decide
+           renderAthletePicker en projects.js). -->
       <div class="form-group">
-        <label>Atletas asignados (mantén Ctrl/Cmd para elegir varios)</label>
-        <select id="routine-athlete" multiple size="4"></select>
+        <label>Atletas asignados</label>
+        <div class="picker">
+          <div class="picker-toolbar">
+            <input type="text" id="athlete-search" class="picker-search" placeholder="Buscar atleta por nombre…">
+            <div class="picker-actions">
+              <button type="button" id="btn-athletes-all" class="btn-mini">Todos</button>
+              <button type="button" id="btn-athletes-none" class="btn-mini">Ninguno</button>
+            </div>
+          </div>
+          <div id="athlete-list" class="check-list"></div>
+          <p id="athlete-count" class="picker-count"></p>
+        </div>
       </div>
 
-      <div class="card" style="margin-top: 1rem; margin-bottom: 1rem;">
+      <!-- ── Agregar ejercicios: filtro en cascada ───────────────────────────
+           El catálogo puede tener cientos de ejercicios y antes todos caían en
+           un único desplegable enorme, sin orden útil para quien arma la rutina.
+           Ahora se reduce por pasos, como se piensa al planificar:
+             1) qué músculo quiero trabajar
+             2) con qué material cuento
+             3) cuál de los que quedan
+           El buscador salta los tres pasos si ya sabes el nombre. Los pasos 2 y
+           3 se recalculan a partir del anterior, así que nunca ofrecen una
+           opción que deje la lista vacía. -->
+      <div class="card exercise-builder">
         <h4 style="margin-bottom: 0.8rem;">Agregar ejercicios</h4>
 
         <div class="form-group">
-          <label>Ejercicio</label>
-          <select id="exercise-select">
-            <!-- Se llena dinámicamente desde el catálogo de Ejercicios -->
-          </select>
+          <label>Buscar por nombre <small>— opcional, salta los filtros</small></label>
+          <input type="text" id="exercise-search" placeholder="Ej. press banca">
+        </div>
+
+        <div class="filter-row">
+          <div class="form-group">
+            <label>1. Grupo muscular</label>
+            <select id="filter-muscle">
+              <option value="">Todos</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>2. Equipo / material</label>
+            <select id="filter-equipment">
+              <option value="">Todos</option>
+            </select>
+          </div>
         </div>
 
         <div class="form-group">
-          <label>Series</label>
-          <input type="number" id="exercise-sets" min="1" value="3">
+          <label>3. Ejercicio <span id="exercise-count" class="picker-count"></span></label>
+          <!-- size > 1: se ven varios a la vez sin desplegar nada, que en móvil
+               es más cómodo que un menú que tapa la pantalla. -->
+          <select id="exercise-select" size="6"></select>
         </div>
 
-        <div class="form-group">
-          <label>Repeticiones</label>
-          <input type="number" id="exercise-reps" min="1" value="10">
+        <!-- Detalle del ejercicio marcado: confirma que es el que se busca
+             (hay muchos "press" parecidos) sin salir del formulario. -->
+        <p id="exercise-preview" class="exercise-preview"></p>
+
+        <div class="filter-row">
+          <div class="form-group">
+            <label>Series</label>
+            <input type="number" id="exercise-sets" min="1" value="3">
+          </div>
+          <div class="form-group">
+            <label>Repeticiones</label>
+            <input type="number" id="exercise-reps" min="1" value="10">
+          </div>
+          <div class="form-group">
+            <label>Descanso (segundos)</label>
+            <input type="number" id="exercise-rest" min="0" value="60">
+          </div>
         </div>
 
-        <div class="form-group">
-          <label>Descanso (segundos)</label>
-          <input type="number" id="exercise-rest" min="0" value="60">
-        </div>
-
-        <!-- Prescripción opcional por ejercicio (columnas nuevas en routine_exercises). -->
-        <div class="form-group">
-          <label>Peso objetivo (kg) <small>— opcional</small></label>
-          <input type="number" id="exercise-weight" min="0" step="0.5" placeholder="Ej. 40">
-        </div>
-
-        <div class="form-group">
-          <label>RPE objetivo (0 a 10) <small>— opcional</small></label>
-          <input type="number" id="exercise-rpe" min="0" max="10" step="0.5" placeholder="Ej. 8">
+        <!-- Prescripción opcional por ejercicio (columnas de routine_exercises). -->
+        <div class="filter-row">
+          <div class="form-group">
+            <label>Peso objetivo (kg) <small>— opcional</small></label>
+            <input type="number" id="exercise-weight" min="0" step="0.5" placeholder="Ej. 40">
+          </div>
+          <div class="form-group">
+            <label>RPE objetivo (0 a 10) <small>— opcional</small></label>
+            <input type="number" id="exercise-rpe" min="0" max="10" step="0.5" placeholder="Ej. 8">
+          </div>
         </div>
 
         <div class="form-group">
@@ -75,8 +133,10 @@
 
       <div id="exercise-list" style="margin-bottom: 1rem;"></div>
 
-      <button type="submit" class="btn">Guardar rutina</button>
-      <button type="button" id="btn-cancel" class="btn btn-danger">Cancelar</button>
+      <div class="form-actions">
+        <button type="submit" class="btn">Guardar rutina</button>
+        <button type="button" id="btn-cancel" class="btn btn-danger">Cancelar</button>
+      </div>
     </form>
   </div>
 

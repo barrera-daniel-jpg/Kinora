@@ -1,30 +1,35 @@
-// Rutas de autenticación: registro e inicio de sesión.
-// Las contraseñas se guardan HASHEADAS con bcrypt en users.password_hash.
+// Rutas de autenticación: inicio de sesión y alta de usuarios.
+// Las contraseñas se guardan HASHEADAS con bcrypt en users.password_hash; la
+// verificación ocurre siempre en el servidor, nunca en el navegador.
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { pool } from "../db.js";
+import { signToken, requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
-const VALID_ROLES = ["superadmin", "admin", "coach", "athlete"];
+// Roles que se pueden dar de alta por la API. 'superadmin' se deja fuera a
+// propósito: se crea a mano con backend/create-superadmin.js.
+const CREATABLE_ROLES = ["admin", "coach", "athlete"];
 
 /**
  * POST /api/auth/register
- * Crea un usuario (tabla users) y su perfil asociado (coaches o athletes)
- * dentro de una transacción, para que ambas inserciones ocurran o ninguna.
+ * Crea un usuario (tabla users) y su perfil asociado (coaches o athletes) dentro
+ * de una transacción, para que ambas inserciones ocurran juntas o ninguna.
+ * Solo la pueden usar el superadmin y los admins.
  */
-router.post("/register", async (req, res) => {
+router.post("/register", requireAuth, requireRole("superadmin", "admin"), async (req, res) => {
   const {
     username, password, email, role, full_name,
-    phone,                          // solo coaches
-    document_number, birthdate, coach_id, // solo atletas
+    phone,                                 // solo coaches
+    document_number, birthdate, coach_id,  // solo atletas
   } = req.body;
 
   if (!username || !password || !role || !full_name) {
     return res.status(400).json({ error: "username, password, role y full_name son obligatorios." });
   }
-  if (!VALID_ROLES.includes(role)) {
-    return res.status(400).json({ error: `role inválido. Usa uno de: ${VALID_ROLES.join(", ")}.` });
+  if (!CREATABLE_ROLES.includes(role)) {
+    return res.status(400).json({ error: `role inválido. Usa uno de: ${CREATABLE_ROLES.join(", ")}.` });
   }
 
   const client = await pool.connect();
@@ -41,9 +46,13 @@ router.post("/register", async (req, res) => {
     const user = userResult.rows[0];
 
     if (role === "coach") {
+      // admin_id: el coach queda a cargo del admin que lo creó. Si lo crea el
+      // superadmin, se queda sin dueño (NULL) y solo él lo gestiona.
+      const adminId = req.user.role === "admin" ? req.user.id : null;
       await client.query(
-        `INSERT INTO coaches (user_id, full_name, phone) VALUES ($1, $2, $3)`,
-        [user.id, full_name, phone || null]
+        `INSERT INTO coaches (user_id, full_name, phone, is_approved, admin_id)
+         VALUES ($1, $2, $3, true, $4)`,
+        [user.id, full_name, phone || null, adminId]
       );
     } else if (role === "athlete") {
       if (!document_number || !birthdate) {
@@ -72,8 +81,9 @@ router.post("/register", async (req, res) => {
 
 /**
  * POST /api/auth/login
- * Verifica username + password. Devuelve los datos del usuario junto con
- * el id de su perfil (coach_id o athlete_id) y su nombre completo.
+ * Verifica username + password y, si son correctos, devuelve los datos del usuario
+ * junto con un token de sesión (JWT) que el frontend manda en las siguientes
+ * peticiones para identificarse.
  */
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
@@ -95,6 +105,8 @@ router.post("/login", async (req, res) => {
     );
 
     const user = result.rows[0];
+    // Usamos el mismo mensaje si el usuario no existe, está inactivo o la
+    // contraseña falla, para no revelar qué usuarios existen.
     if (!user || !user.is_active) {
       return res.status(401).json({ error: "Credenciales incorrectas." });
     }
@@ -105,7 +117,38 @@ router.post("/login", async (req, res) => {
     }
 
     delete user.password_hash; // Nunca devolvemos el hash al cliente.
-    res.json(user);
+    res.json({ ...user, token: signToken(user) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/auth/change-password
+ * Cambia la contraseña del usuario con la sesión abierta. Pide la contraseña
+ * actual como confirmación antes de aplicar la nueva.
+ */
+router.post("/change-password", requireAuth, async (req, res) => {
+  const { current_password, new_password } = req.body;
+
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: "current_password y new_password son obligatorios." });
+  }
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres." });
+  }
+
+  try {
+    const result = await pool.query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id]);
+    if (!result.rows.length) return res.status(404).json({ error: "Usuario no encontrado." });
+
+    const matches = await bcrypt.compare(current_password, result.rows[0].password_hash);
+    if (!matches) return res.status(401).json({ error: "La contraseña actual no es correcta." });
+
+    const password_hash = await bcrypt.hash(new_password, 10);
+    await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [password_hash, req.user.id]);
+
+    res.json({ updated: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

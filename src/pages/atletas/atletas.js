@@ -1,5 +1,5 @@
 import { AuthService } from '../../services/auth.js';
-import { API_URL, apiGet, apiSend, scopeQuery } from '../../services/api.js';
+import { API_URL, apiGet, apiSend } from '../../services/api.js';
 
 // Endpoint de atletas del backend. Crear un atleta implica, en el servidor,
 // crear un usuario (role 'athlete') y su perfil en la tabla athletes.
@@ -24,10 +24,9 @@ async function populateCoachOptions() {
     const coachSelect = document.getElementById('athlete-coach');
     if (!coachSelect) return;
 
-    // AISLAMIENTO: un admin solo puede asignar el atleta a UNO DE SUS coaches (?admin_id=);
-    // el superadmin ve todos los coaches.
-    const currentUser = AuthService.getCurrentUser();
-    const coaches = await apiGet(`${COACHES_URL}${scopeQuery(currentUser)}`);
+    // El backend ya recorta la lista según el token: un admin solo recibe SUS
+    // coaches y el superadmin los recibe todos. Aquí no hace falta filtrar nada.
+    const coaches = await apiGet(COACHES_URL);
     coachSelect.innerHTML = '<option value="">Sin coach</option>' +
         coaches.map(c => `<option value="${c.id}">${c.full_name}</option>`).join('');
 }
@@ -98,6 +97,31 @@ function setUserFieldsVisible(visible) {
 }
 
 /**
+ * complianceHTML(athlete)
+ * Barra de cumplimiento: qué porcentaje de sus rutinas asignadas ha completado.
+ *
+ * routine_count y completed_count los cuenta el backend en la propia consulta, así
+ * que aquí solo es una división. Antes esto no existía y el coach no tenía forma de
+ * ver de un vistazo quién está al día y quién no.
+ *
+ * El color es intencionado: verde >= 80%, ámbar >= 50%, rojo por debajo. Un número
+ * suelto obliga a leer y comparar; el color se entiende sin pensar.
+ */
+function complianceHTML(athlete) {
+    const total = athlete.routine_count ?? 0;
+    if (!total) return '<small style="color: var(--text-muted);">Sin rutinas asignadas</small>';
+
+    const done = athlete.completed_count ?? 0;
+    const percent = Math.round((done / total) * 100);
+    const color = percent >= 80 ? 'var(--success)' : percent >= 50 ? '#f59e0b' : 'var(--danger)';
+
+    return `<small>Cumplimiento:
+        <strong style="color: ${color};">${percent}%</strong>
+        <span style="color: var(--text-muted);">(${done} de ${total} rutinas)</span>
+    </small>`;
+}
+
+/**
  * renderAthletes()
  * Trae los atletas del backend y dibuja una tarjeta por cada uno.
  */
@@ -106,9 +130,14 @@ async function renderAthletes() {
     const listContainer = document.getElementById('athletes-list');
     listContainer.innerHTML = '';
 
-    // Aislamiento: un coach pide SUS atletas (?coach_id=); un admin, los de SUS coaches
-    // (?admin_id=); el superadmin los pide todos (sin filtro).
-    const athletes = await apiGet(`${ATHLETES_URL}${scopeQuery(currentUser)}`);
+    // El recorte por rol lo hace el backend a partir del token.
+    let athletes;
+    try {
+        athletes = await apiGet(ATHLETES_URL);
+    } catch (error) {
+        listContainer.innerHTML = `<p style="color: var(--danger);">${error.message}</p>`;
+        return;
+    }
 
     if (!athletes.length) {
         listContainer.innerHTML = '<p style="color: var(--a-text-muted);">Aún no hay atletas registrados.</p>';
@@ -140,6 +169,8 @@ async function renderAthletes() {
                 <p style="margin: 0;"><small>Correo: ${athlete.email || 'No registrado'}</small></p>
                 <p style="margin: 0;"><small>Documento: ${athlete.document_number}</small></p>
                 <p style="margin: 0;"><small>Nacimiento: ${birthdate}</small></p>
+                ${athlete.coach_name ? `<p style="margin: 0;"><small>Coach: ${athlete.coach_name}</small></p>` : ''}
+                <p style="margin: 0.2rem 0 0;">${complianceHTML(athlete)}</p>
             </div>
             ${actionsHTML}
         `;
@@ -168,30 +199,41 @@ async function openAssignRoutines(event) {
 
 /**
  * renderAssignPanel()
- * Lista las rutinas disponibles (según el rol) y marca las que YA tiene el atleta,
- * con un botón para asignar o quitar cada una. Un atleta puede tener muchas rutinas.
+ * Lista las rutinas que este usuario puede asignar y marca las que YA tiene el
+ * atleta, con un botón para asignar o quitar cada una. Un atleta puede tener varias.
+ *
+ * Antes esto hacía DOS peticiones: una para las rutinas disponibles y otra para las
+ * del atleta. No hace falta: cada rutina ya viene con su lista de `assignments`, así
+ * que saber si este atleta está dentro es mirar ese array. Una petición menos y sin
+ * riesgo de que las dos respuestas se contradigan.
+ *
+ * Solo se ofrecen las rutinas con can_edit: asignar es modificar la rutina, así que
+ * las que no son suyas (catálogo base incluido) el backend las rechazaría.
  */
 async function renderAssignPanel() {
     const container = document.getElementById('assign-routines-list');
     container.innerHTML = '<p style="color: var(--a-text-muted);">Cargando…</p>';
 
-    const currentUser = AuthService.getCurrentUser();
-    // Rutinas que puede asignar (las de su alcance) y las que el atleta ya tiene.
-    const [available, assigned] = await Promise.all([
-        apiGet(`${ROUTINES_URL}${scopeQuery(currentUser)}`),
-        apiGet(`${ROUTINES_URL}?athlete_id=${assignPanelAthleteId}`),
-    ]);
-    const assignedIds = new Set(assigned.map(r => r.id));
+    let routines;
+    try {
+        routines = await apiGet(ROUTINES_URL);
+    } catch (error) {
+        container.innerHTML = `<p style="color: var(--danger);">${error.message}</p>`;
+        return;
+    }
+
+    const athleteId = Number(assignPanelAthleteId);
+    const available = routines.filter(r => r.can_edit);
 
     if (!available.length) {
-        container.innerHTML = '<p style="color: var(--a-text-muted);">No hay rutinas para asignar. Crea una en la sección Rutinas.</p>';
+        container.innerHTML = '<p style="color: var(--a-text-muted);">No tienes rutinas propias para asignar. Crea una en la sección Rutinas.</p>';
         return;
     }
 
     container.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 0.6rem;">
             ${available.map(routine => {
-                const isAssigned = assignedIds.has(routine.id);
+                const isAssigned = (routine.assignments || []).some(a => a.athlete_id === athleteId);
                 return `
                     <div class="card" style="padding: 0.8rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
                         <div>
@@ -232,7 +274,10 @@ async function toggleAssignment(event) {
             await apiSend(`${ROUTINES_URL}/${routineId}/assignments`,
                 'POST', { athlete_id: Number(assignPanelAthleteId) }, 'No se pudo actualizar la asignación.');
         }
-        await renderAssignPanel();
+        // Se repintan los dos: el panel (para el botón Asignar/Quitar) y la lista
+        // de atletas, porque el cumplimiento depende de cuántas rutinas tiene y
+        // acaba de cambiar. Sin esto, el porcentaje de la tarjeta quedaría viejo.
+        await Promise.all([renderAssignPanel(), renderAthletes()]);
     } catch (error) {
         alert(error.message);
     }

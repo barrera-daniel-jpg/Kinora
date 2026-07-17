@@ -18,7 +18,7 @@ async function rehash() {
     );
 
     if (!rows.length) {
-      console.log("✅ Todos los passwords ya están hasheados con bcrypt. Nada que hacer.");
+      console.log(">> Todos los passwords ya están hasheados con bcrypt. Nada que hacer.");
       return;
     }
 
@@ -34,7 +34,7 @@ async function rehash() {
       console.log(`  ✓ ${user.username}`);
     }
 
-    console.log("✅ Migración completa. Ya puedes hacer login con las contraseñas originales.");
+    console.log(">> Migración completa. Ya puedes hacer login con las contraseñas originales.");
   } catch (error) {
     console.error("❌ Error:", error.message);
     process.exitCode = 1;

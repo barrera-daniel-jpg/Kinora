@@ -35,7 +35,7 @@ async function main() {
         `UPDATE users SET role = 'superadmin', is_active = true, password_hash = $2 WHERE id = $1`,
         [existing.rows[0].id, password_hash]
       );
-      console.log(`✅ Usuario "${username}" actualizado a superadmin (activo).`);
+      console.log(`>> Usuario "${username}" actualizado a superadmin (activo).`);
     } else {
       // No existe: lo creamos. Si el email choca con otro usuario, lo dejamos en NULL.
       const emailTaken = email
@@ -47,7 +47,7 @@ async function main() {
           VALUES ($1, $2, 'superadmin', $3) RETURNING id`,
         [username, password_hash, emailTaken ? null : email]
       );
-      console.log(`✅ Superadmin creado (id ${inserted.rows[0].id}) -> usuario: ${username}`);
+      console.log(`>> Superadmin creado (id ${inserted.rows[0].id}) -> usuario: ${username}`);
       if (emailTaken) console.log(`   ⚠️ El correo "${email}" ya estaba en uso: se guardó con email NULL.`);
     }
   } catch (error) {

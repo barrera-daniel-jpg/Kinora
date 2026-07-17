@@ -922,3 +922,204 @@ body {
   border: 1px solid var(--border);
 }
 .athletes-page .btn-edit-athlete:hover { background: rgba(255, 255, 255, 0.06); transform: none; }
+
+/* ==========================================================================
+   Distintivo "Catálogo base" / "Plantilla base"
+   Marca los ejercicios y rutinas que trae el sistema (created_by IS NULL):
+   todos los pueden usar en sus rutinas, pero solo el superadmin los edita.
+   Sirve para que se entienda POR QUÉ esa tarjeta no trae botones de editar,
+   en vez de parecer un fallo de la página.
+   ========================================================================== */
+.badge-base {
+  display: inline-block;
+  vertical-align: middle;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  /* No hereda el tamaño del <h3> que lo contiene. */
+  line-height: 1.4;
+}
+
+/* ==========================================================================
+   Armador de rutinas — selector de atletas y filtro de ejercicios
+   (/src/pages/projects). Pensado para que funcione igual de bien con el dedo
+   en un móvil que con el ratón en un escritorio.
+   ========================================================================== */
+
+/* --- Contenedor común de los selectores --- */
+.picker {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 0.75rem;
+}
+
+.picker-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+/* flex-basis en 'auto' y no en un tamaño fijo: la barra se apila en columna en
+   móvil, y ahí el flex-basis pasa a controlar la ALTURA. Con "flex: 1 1 12rem"
+   el buscador se estiraba hasta 12rem (~190px) de alto y ocupaba media pantalla. */
+.picker-search { flex: 1 1 auto; min-width: 0; }
+
+.picker-actions { display: flex; gap: 0.4rem; }
+
+/* Botones auxiliares ("Todos" / "Ninguno"): discretos, para no competir con el
+   acento lima del botón principal de guardar. */
+.btn-mini {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  /* 40px de alto mínimo: es el tamaño por debajo del cual un dedo falla el toque. */
+  min-height: 40px;
+}
+.btn-mini:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+
+.picker-count {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.picker-empty {
+  margin: 0;
+  padding: 0.8rem 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* --- Lista de casillas (atletas) --- */
+.check-list {
+  /* Se limita la altura y se hace scroll dentro: con 40 atletas, sin esto el
+     formulario se volvería kilométrico y el botón de guardar quedaría perdido. */
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* Cada fila es un <label>, así que hay que anular el "display: block" y el
+   "margin-bottom" que .form-group label le impone a todas las etiquetas del
+   formulario: ese margen separaba las filas casi el doble de lo necesario. */
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  margin-bottom: 0;
+  font-weight: 400;
+  border-radius: 6px;
+  cursor: pointer;
+  /* Toda la fila es zona de toque, no solo el cuadradito: en un móvil acertarle
+     a una casilla de 16px es un ejercicio de puntería. */
+  min-height: 44px;
+  box-sizing: border-box;
+  transition: background-color 0.12s ease;
+}
+.check-item:hover { background: rgba(255, 255, 255, 0.05); }
+
+/* La regla general ".form-group input" da width:100% y padding a TODOS los campos.
+   En una casilla eso la deformaba: el padding de 0.7rem la convertía en un bloque
+   de más de 60px y estiraba la fila entera. Aquí se revierte. */
+.check-item input[type="checkbox"] {
+  /* Más grande que el de por defecto para poder tocarlo con el dedo. */
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.check-item-name { flex: 1; font-size: 0.92rem; }
+
+.check-item-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* --- Filtro de ejercicios en cascada --- */
+.exercise-builder { margin: 1rem 0; }
+
+/* Los filtros van en fila cuando hay sitio y se apilan cuando no.
+   auto-fit + minmax hace el salto solo, sin necesidad de un @media por cada
+   combinación de campos. */
+.filter-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+.filter-row .form-group { margin-bottom: 0.75rem; }
+
+/* Detalle del ejercicio marcado */
+.exercise-preview {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  border-left: 3px solid var(--primary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.exercise-preview .preview-meta { color: var(--text-muted); margin-left: 0.5rem; }
+.exercise-preview .preview-desc { color: var(--text-muted); font-size: 0.85rem; }
+
+/* Las opciones de un <select size="6"> son diminutas por defecto en móvil. */
+#exercise-select option { padding: 0.5rem 0.4rem; }
+#exercise-select option:disabled { color: #5f5f66; font-style: italic; }
+
+/* Un <select size="6"> resalta la opción marcada con el azul/blanco del sistema,
+   que en el tema oscuro aparece como una banda clara y desentona con todo lo
+   demás. Se fuerza el acento lima de la marca.
+   El !important hace falta porque el estilo por defecto de la opción marcada
+   viene del navegador y gana a una regla normal. */
+#exercise-select option:checked {
+  background: var(--primary) !important;
+  color: #0a0a0b !important;
+  font-weight: 600;
+}
+
+.form-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* --- Móvil --- */
+@media (max-width: 560px) {
+  /* A pantalla completa los botones son más fáciles de acertar y dejan claro
+     cuál es la acción principal. */
+  .form-actions { flex-direction: column; }
+  .form-actions .btn { width: 100%; min-height: 46px; }
+
+  .picker-toolbar { flex-direction: column; align-items: stretch; }
+  .picker-actions { justify-content: stretch; }
+  .picker-actions .btn-mini { flex: 1; }
+
+  /* Más alto en móvil: la pantalla es estrecha pero larga, y así se ven más
+     atletas sin tener que hacer scroll dentro de un scroll. */
+  .check-list { max-height: 300px; }
+
+  .check-item-meta { display: none; } /* El nombre manda cuando falta ancho. */
+
+  /* 16px evita que Safari en iOS haga zoom automático al enfocar un campo,
+     que descoloca toda la página. */
+  .form-group input, .form-group select, .form-group textarea { font-size: 16px; }
+}

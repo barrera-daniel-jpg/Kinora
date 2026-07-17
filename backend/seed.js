@@ -92,7 +92,7 @@ async function seed() {
     }
 
     await client.query("COMMIT");
-    console.log("✅ Datos iniciales cargados.");
+    console.log(">> Datos iniciales cargados.");
     console.log(`   Superadmin -> usuario: ${process.env.SUPERADMIN_USERNAME || "superadmin"}  contraseña: ${process.env.SUPERADMIN_PASSWORD || "123456"}`);
     console.log("   Admin  -> usuario: admin   contraseña: 123456");
     console.log("   Coach  -> usuario: coach   contraseña: 123456");

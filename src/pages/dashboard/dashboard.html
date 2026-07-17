@@ -1,5 +1,14 @@
+<!--
+  Vista de Dashboard: resumen de la cuenta según el rol.
+  Se inyecta como fragmento dentro de <div id="app"> desde el router,
+  por eso NO lleva <html>, <head> ni <body>.
+-->
 <div>
   <h2>Bienvenido, <span id="user-name"></span> (<span id="user-role"></span>)</h2>
-  <div class="project-grid" id="metrics-container">
-    </div>
+
+  <!-- Fecha y hora en vivo. Lo rellena startClock() en dashboard.js. -->
+  <p id="fecha-hora-actual" style="color: var(--text-muted); margin-bottom: 1.5rem; text-transform: capitalize;"></p>
+
+  <!-- Las tarjetas de métricas se generan desde dashboard.js según el rol. -->
+  <div class="project-grid" id="metrics-container"></div>
 </div>

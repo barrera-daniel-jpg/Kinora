@@ -23,6 +23,16 @@
         </div>
 
         <div class="form-group">
+          <label>Número de documento</label>
+          <input type="text" id="number-document" placeholder="Ej. 1001001001" required />
+        </div>
+
+        <div class="form-group">
+          <label>Fecha de nacimiento</label>
+          <input type="date" id="coach-birthdate" required />
+        </div>
+
+        <div class="form-group">
           <label>Teléfono</label>
           <input type="tel" id="coach-phone" placeholder="Ej. 300 123 4567">
         </div>
@@ -39,7 +49,10 @@
           <input type="email" id="coach-email" placeholder="coach@correo.com">
         </div>
 
-        <div class="form-group">
+        <!-- El grupo se oculta al EDITAR (lo hace openCoachForm en coaches.js):
+             este formulario no cambia contraseñas. Para eso está el flujo de
+             "cambiar contraseña", que exige conocer la actual. -->
+        <div class="form-group" id="coach-password-group">
           <label>Contraseña</label>
           <input type="password" id="coach-password" placeholder="Mínimo 6 caracteres" minlength="6" required>
         </div>

@@ -28,9 +28,21 @@
           <input type="email" id="admin-email" placeholder="admin@correo.com">
         </div>
 
-        <div class="form-group">
+        <!-- Se oculta al EDITAR (lo hace openAdminForm en admins.js): este
+             formulario no cambia contraseñas. -->
+        <div class="form-group" id="admin-password-group">
           <label>Contraseña</label>
           <input type="password" id="admin-password" placeholder="Mínimo 6 caracteres" minlength="6" required>
+        </div>
+
+        <!-- Solo tiene efecto al editar. Suspender el acceso es la alternativa
+             prudente a eliminar: el admin no puede entrar, pero sus coaches siguen
+             a su cargo en vez de quedar huérfanos. -->
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="checkbox" id="admin-active" checked style="width: auto;">
+            <span>Acceso activo (desmarcar para suspender)</span>
+          </label>
         </div>
 
         <button type="submit" class="btn">Guardar admin</button>
