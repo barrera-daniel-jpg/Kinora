@@ -12,7 +12,7 @@ const DB_SCHEMA = process.env.DB_SCHEMA || "base_v1";
 
 // Fijamos el search_path al abrir la conexión, para escribir "users"
 // en vez de "base_v1.users" en todas las consultas.
-const searchPathOption = -c search_path=${DB_SCHEMA},public;
+const searchPathOption = `-c search_path=${DB_SCHEMA},public`;
 
 // Pool de conexiones al Postgres local (contenedor Docker "kinora_local").
 // Un Pool reutiliza conexiones entre peticiones en vez de abrir una por consulta.

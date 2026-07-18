@@ -368,13 +368,17 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// --- Asignaciones sueltas (asignar/quitar una rutina a un atleta desde la vista
+//     de Atletas, sin abrir la rutina completa). ---
+
 /**
  * assertOwnsRoutine(user, routineId)
  * Devuelve la rutina si el usuario la puede gestionar; si no, lanza.
  * Asignar una rutina es una forma de modificarla, así que exige ser su dueño.
  */
 async function assertOwnsRoutine(user, routineId) {
-  const result = await pool.query(SELECT * FROM routines WHERE id = $1, [routineId]);
+  const result = await pool.query(`SELECT * FROM routines WHERE id = $1`, [routineId]);
   if (!result.rows.length) throw Object.assign(new Error("Rutina no encontrada."), { status: 404 });
   if (!canModify(user, result.rows[0])) {
     throw Object.assign(new Error("Solo puedes asignar las rutinas que creaste tú."), { status: 403 });
@@ -420,7 +424,7 @@ router.delete("/:id/assignments/:athleteId", async (req, res) => {
     await assertOwnsRoutine(req.user, req.params.id);
 
     const result = await pool.query(
-      DELETE FROM routine_assignments WHERE routine_id = $1 AND athlete_id = $2 RETURNING id,
+      `DELETE FROM routine_assignments WHERE routine_id = $1 AND athlete_id = $2 RETURNING id`,
       [req.params.id, req.params.athleteId]
     );
     if (!result.rows.length) return res.status(404).json({ error: "Esa asignación no existe." });
@@ -445,7 +449,7 @@ router.patch("/:id/assignments/:athleteId/status", async (req, res) => {
   const athleteId = Number(req.params.athleteId);
 
   if (!VALID_STATUSES.includes(status)) {
-    return res.status(400).json({ error: Estado inválido. Usa uno de: ${VALID_STATUSES.join(", ")}. });
+    return res.status(400).json({ error: `Estado inválido. Usa uno de: ${VALID_STATUSES.join(", ")}.` });
   }
 
   try {
