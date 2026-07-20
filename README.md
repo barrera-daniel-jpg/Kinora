@@ -111,8 +111,11 @@ Detalle de cada módulo y función: [`DOCUMENTACION.md`](./DOCUMENTACION.md).
 
 ---
 
-> ⚠️ **Nota de seguridad (proyecto académico):** el login aún **no emite token JWT** y
-> los endpoints están abiertos; el aislamiento por rol es a nivel de UI y es
-> falsificable. No usar en producción tal cual. Ver
+> 🔒 **Nota de seguridad:** el login emite un **token JWT** firmado y **todos los
+> endpoints exigen ese token** (salvo `/health` y `/auth/login`). El aislamiento por
+> rol se calcula en el **servidor** a partir del token, no en la UI, así que no es
+> falsificable desde el cliente. Quedan pendientes propios de un proyecto académico
+> (token en `localStorage`, sin revocación antes de las 8 h, sin límite de intentos de
+> login): no usar en producción tal cual. Ver
 > [`DOCUMENTACION.md` §14](./DOCUMENTACION.md#14-limitaciones-conocidas-y-pendientes-todo).
 </content>
